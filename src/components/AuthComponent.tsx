@@ -31,31 +31,37 @@ export default function AuthComponent({ onAuthSuccess }: AuthProps) {
 
   const handleMasterLogin = async () => {
     if (formData.email === 'eventonasuamao2025' && formData.password === '@Oshp1920') {
-      // Criar usuário mestre se não existir
-      const { data: existingUser } = await supabase
-        .from('users')
-        .select('*')
-        .eq('email', 'master@eventonasuamao.com')
-        .single()
-
-      if (!existingUser) {
-        const { error: insertError } = await supabase
+      try {
+        // Tentar criar usuário mestre se não existir
+        const { data: existingUser } = await supabase
           .from('users')
-          .insert([
-            {
-              email: 'master@eventonasuamao.com',
-              name: 'Usuário Mestre',
-              is_master: true
-            }
-          ])
+          .select('*')
+          .eq('email', 'master@eventonasuamao.com')
+          .single()
 
-        if (insertError) {
-          console.error('Erro ao criar usuário mestre:', insertError)
+        if (!existingUser) {
+          const { error: insertError } = await supabase
+            .from('users')
+            .insert([
+              {
+                id: 'master-user-id',
+                email: 'master@eventonasuamao.com',
+                name: 'Usuário Mestre',
+                is_master: true
+              }
+            ])
+
+          if (insertError) {
+            console.error('Erro ao criar usuário mestre:', insertError)
+          }
         }
+      } catch (error) {
+        console.error('Erro ao criar usuário mestre:', error)
+        // Continuar mesmo se houver erro - usar fallback
       }
 
       const masterUser = {
-        id: 'master-user',
+        id: 'master-user-id',
         email: 'master@eventonasuamao.com',
         name: 'Usuário Mestre',
         is_master: true
@@ -96,22 +102,33 @@ export default function AuthComponent({ onAuthSuccess }: AuthProps) {
 
       if (data.user) {
         // Buscar dados do usuário na tabela users
-        const { data: userData, error: userError } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', data.user.id)
-          .single()
+        try {
+          const { data: userData, error: userError } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', data.user.id)
+            .single()
 
-        if (userError) {
-          console.error('Erro ao buscar dados do usuário:', userError)
+          if (userError) {
+            console.error('Erro ao buscar dados do usuário:', userError)
+          }
+
+          onAuthSuccess({
+            id: data.user.id,
+            email: data.user.email,
+            name: userData?.name || data.user.email?.split('@')[0] || 'Usuário',
+            is_master: userData?.is_master || false
+          })
+        } catch (err) {
+          console.error('Erro ao buscar dados do usuário:', err)
+          // Usar dados básicos se houver erro
+          onAuthSuccess({
+            id: data.user.id,
+            email: data.user.email,
+            name: data.user.email?.split('@')[0] || 'Usuário',
+            is_master: false
+          })
         }
-
-        onAuthSuccess({
-          id: data.user.id,
-          email: data.user.email,
-          name: userData?.name || data.user.email?.split('@')[0] || 'Usuário',
-          is_master: userData?.is_master || false
-        })
       }
     } catch (err) {
       setError('Erro inesperado ao fazer login')
@@ -151,46 +168,51 @@ export default function AuthComponent({ onAuthSuccess }: AuthProps) {
       }
 
       if (data.user) {
-        // Inserir dados do usuário na tabela users
-        const { error: insertError } = await supabase
-          .from('users')
-          .insert([
-            {
-              id: data.user.id,
-              email: data.user.email,
-              name: formData.name,
-              is_master: false
-            }
-          ])
-
-        if (insertError) {
-          console.error('Erro ao salvar dados do usuário:', insertError)
-        }
-
-        // Criar dados iniciais do usuário
-        const { error: dataError } = await supabase
-          .from('user_data')
-          .insert([
-            {
-              user_id: data.user.id,
-              events: [],
-              products: [],
-              sales: [],
-              expenses: [],
-              expense_categories: [],
-              revenues: [],
-              notifications: [],
-              templates: [],
-              ticket_info: {
-                currentTicketPrice: 50,
-                ticketsSold: 0,
-                eventTotalCost: 15000
+        try {
+          // Inserir dados do usuário na tabela users
+          const { error: insertError } = await supabase
+            .from('users')
+            .insert([
+              {
+                id: data.user.id,
+                email: data.user.email,
+                name: formData.name,
+                is_master: false
               }
-            }
-          ])
+            ])
 
-        if (dataError) {
-          console.error('Erro ao criar dados iniciais:', dataError)
+          if (insertError) {
+            console.error('Erro ao salvar dados do usuário:', insertError)
+          }
+
+          // Criar dados iniciais do usuário
+          const { error: dataError } = await supabase
+            .from('user_data')
+            .insert([
+              {
+                user_id: data.user.id,
+                events: [],
+                products: [],
+                sales: [],
+                expenses: [],
+                expense_categories: [],
+                revenues: [],
+                notifications: [],
+                templates: [],
+                ticket_info: {
+                  currentTicketPrice: 50,
+                  ticketsSold: 0,
+                  eventTotalCost: 15000
+                }
+              }
+            ])
+
+          if (dataError) {
+            console.error('Erro ao criar dados iniciais:', dataError)
+          }
+        } catch (err) {
+          console.error('Erro ao salvar dados:', err)
+          // Continuar mesmo se houver erro - usar localStorage como fallback
         }
 
         setSuccess('Conta criada com sucesso! Verifique seu e-mail para confirmar.')

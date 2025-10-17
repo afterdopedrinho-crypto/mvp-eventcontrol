@@ -49,12 +49,8 @@ import {
   Slider,
   Undo,
   Redo,
-  RotateCcw,
-  LogOut,
-  User
+  RotateCcw
 } from 'lucide-react'
-import AuthComponent from '@/components/AuthComponent'
-import { AuthProvider, useAuth } from '@/hooks/useAuth'
 
 interface Event {
   id: string
@@ -159,8 +155,7 @@ interface UndoAction {
   description: string
 }
 
-function EventControlProApp() {
-  const { user, loading, signOut, saveUserData, loadUserData } = useAuth()
+export default function EventControlPro() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'ingressos' | 'bar' | 'loja' | 'relatorio' | 'despesas'>('dashboard')
   const [darkMode, setDarkMode] = useState(false)
   const [showCalculator, setShowCalculator] = useState(false)
@@ -288,46 +283,83 @@ function EventControlProApp() {
     }
   }
 
-  // Load data when user logs in
+  // Load data from localStorage on mount
   useEffect(() => {
-    if (user && !loading) {
-      loadUserData().then(data => {
-        if (data) {
-          setEvents(data.events || [])
-          setProducts(data.products || [])
-          setSales(data.sales || [])
-          setExpenses(data.expenses || [])
-          setExpenseCategories(data.expense_categories || [])
-          setRevenues(data.revenues || [])
-          setNotifications(data.notifications || [])
-          setTemplates(data.templates || [])
-          setTicketInfo(data.ticket_info || { currentTicketPrice: 50, ticketsSold: 0, eventTotalCost: 15000 })
-        }
-      })
+    const savedData = {
+      events: localStorage.getItem('eventcontrol-events'),
+      products: localStorage.getItem('eventcontrol-products'),
+      sales: localStorage.getItem('eventcontrol-sales'),
+      expenses: localStorage.getItem('eventcontrol-expenses'),
+      expenseCategories: localStorage.getItem('eventcontrol-expensecategories'),
+      revenues: localStorage.getItem('eventcontrol-revenues'),
+      notifications: localStorage.getItem('eventcontrol-notifications'),
+      templates: localStorage.getItem('eventcontrol-templates'),
+      ticketInfo: localStorage.getItem('eventcontrol-ticketinfo'),
+      darkMode: localStorage.getItem('eventcontrol-darkmode'),
+      undoHistory: localStorage.getItem('eventcontrol-undohistory')
     }
-  }, [user, loading, loadUserData])
 
-  // Save data whenever it changes
+    if (savedData.events) setEvents(JSON.parse(savedData.events))
+    if (savedData.products) setProducts(JSON.parse(savedData.products))
+    if (savedData.sales) setSales(JSON.parse(savedData.sales))
+    if (savedData.expenses) setExpenses(JSON.parse(savedData.expenses))
+    if (savedData.expenseCategories) setExpenseCategories(JSON.parse(savedData.expenseCategories))
+    if (savedData.revenues) setRevenues(JSON.parse(savedData.revenues))
+    if (savedData.notifications) setNotifications(JSON.parse(savedData.notifications))
+    if (savedData.templates) setTemplates(JSON.parse(savedData.templates))
+    if (savedData.ticketInfo) setTicketInfo(JSON.parse(savedData.ticketInfo))
+    if (savedData.darkMode) setDarkMode(JSON.parse(savedData.darkMode))
+    if (savedData.undoHistory) setUndoHistory(JSON.parse(savedData.undoHistory))
+  }, [])
+
+  // Save to localStorage whenever data changes
   useEffect(() => {
-    if (user && !loading) {
-      const dataToSave = {
-        events,
-        products,
-        sales,
-        expenses,
-        expense_categories: expenseCategories,
-        revenues,
-        notifications,
-        templates,
-        ticket_info: ticketInfo
-      }
-      saveUserData(dataToSave)
-    }
-  }, [user, loading, events, products, sales, expenses, expenseCategories, revenues, notifications, templates, ticketInfo, saveUserData])
+    localStorage.setItem('eventcontrol-events', JSON.stringify(events))
+  }, [events])
+
+  useEffect(() => {
+    localStorage.setItem('eventcontrol-products', JSON.stringify(products))
+  }, [products])
+
+  useEffect(() => {
+    localStorage.setItem('eventcontrol-sales', JSON.stringify(sales))
+  }, [sales])
+
+  useEffect(() => {
+    localStorage.setItem('eventcontrol-expenses', JSON.stringify(expenses))
+  }, [expenses])
+
+  useEffect(() => {
+    localStorage.setItem('eventcontrol-expensecategories', JSON.stringify(expenseCategories))
+  }, [expenseCategories])
+
+  useEffect(() => {
+    localStorage.setItem('eventcontrol-revenues', JSON.stringify(revenues))
+  }, [revenues])
+
+  useEffect(() => {
+    localStorage.setItem('eventcontrol-notifications', JSON.stringify(notifications))
+  }, [notifications])
+
+  useEffect(() => {
+    localStorage.setItem('eventcontrol-templates', JSON.stringify(templates))
+  }, [templates])
+
+  useEffect(() => {
+    localStorage.setItem('eventcontrol-ticketinfo', JSON.stringify(ticketInfo))
+  }, [ticketInfo])
+
+  useEffect(() => {
+    localStorage.setItem('eventcontrol-darkmode', JSON.stringify(darkMode))
+  }, [darkMode])
+
+  useEffect(() => {
+    localStorage.setItem('eventcontrol-undohistory', JSON.stringify(undoHistory))
+  }, [undoHistory])
 
   // Initialize with sample data if empty
   useEffect(() => {
-    if (user && events.length === 0) {
+    if (events.length === 0) {
       const sampleEvents: Event[] = [
         {
           id: '1',
@@ -495,7 +527,7 @@ function EventControlProApp() {
       setExpenseCategories(sampleExpenseCategories)
       setTemplates(sampleTemplates)
     }
-  }, [user, events.length])
+  }, [events.length])
 
   // Calculator functions
   const handleCalculatorInput = (value: string) => {
@@ -995,21 +1027,6 @@ function EventControlProApp() {
 
   const themeClasses = darkMode ? 'dark bg-gray-900' : 'bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50'
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">Carregando...</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (!user) {
-    return <AuthComponent onAuthSuccess={() => {}} />
-  }
-
   return (
     <div className={`min-h-screen transition-all duration-300 ${themeClasses}`}>
       <div className="max-w-7xl mx-auto p-2 sm:p-4 lg:p-6">
@@ -1022,12 +1039,6 @@ function EventControlProApp() {
             <p className={`text-sm sm:text-lg mt-1 sm:mt-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
               Gestão Completa de Eventos com Bar e Loja
             </p>
-            <div className="flex items-center gap-2 mt-2">
-              <User className="w-4 h-4 text-blue-600" />
-              <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                {user.name} {user.is_master && '(Mestre)'}
-              </span>
-            </div>
           </div>
           
           <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto justify-end">
@@ -1087,15 +1098,6 @@ function EventControlProApp() {
                 )}
               </button>
             </div>
-
-            {/* Logout Button */}
-            <button
-              onClick={signOut}
-              className="p-2 sm:p-3 bg-gradient-to-r from-red-500 to-pink-600 text-white rounded-xl hover:from-red-600 hover:to-pink-700 transition-all duration-300 hover:scale-105 shadow-lg"
-              title="Sair"
-            >
-              <LogOut className="w-4 h-4 sm:w-5 sm:h-5" />
-            </button>
           </div>
         </div>
 
@@ -2368,19 +2370,5 @@ function EventControlProApp() {
         )}
       </div>
     </div>
-  )
-}
-
-export default function EventControlPro() {
-  const [user, setUser] = useState<any>(null)
-
-  const handleAuthSuccess = (userData: any) => {
-    setUser(userData)
-  }
-
-  return (
-    <AuthProvider>
-      <EventControlProApp />
-    </AuthProvider>
   )
 }
