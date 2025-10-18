@@ -63,7 +63,11 @@ import {
   Layers,
   Gauge,
   Play,
-  FolderOpen
+  FolderOpen,
+  Lock,
+  User,
+  LogIn,
+  Shield
 } from 'lucide-react'
 
 interface Event {
@@ -214,7 +218,34 @@ interface SimulationResult {
   }
 }
 
+// Interface para usuário
+interface User {
+  id: string
+  username: string
+  email: string
+  password: string
+  role: 'admin' | 'user'
+  createdAt: Date
+  lastLogin?: Date
+}
+
 export default function EventControlPro() {
+  // Estados de autenticação
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [currentUser, setCurrentUser] = useState<User | null>(null)
+  const [showLoginForm, setShowLoginForm] = useState(true)
+  const [loginData, setLoginData] = useState({
+    username: '',
+    password: '',
+    email: '',
+    confirmPassword: ''
+  })
+  const [isRegistering, setIsRegistering] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
+  const [loginError, setLoginError] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+
+  // Estados existentes
   const [showWelcome, setShowWelcome] = useState(true)
   const [hasExistingEvents, setHasExistingEvents] = useState(false)
   const [activeTab, setActiveTab] = useState<'dashboard' | 'ingressos' | 'bar' | 'loja' | 'relatorio' | 'simulador'>('dashboard')
@@ -293,6 +324,158 @@ export default function EventControlPro() {
     amount: '',
     category: 'food'
   })
+
+  // Funções de autenticação
+  const validateEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    return emailRegex.test(email)
+  }
+
+  const validatePassword = (password: string) => {
+    return password.length >= 6
+  }
+
+  const hashPassword = (password: string) => {
+    // Simulação de hash simples (em produção, use bcrypt ou similar)
+    return btoa(password + 'eventcontrol_salt')
+  }
+
+  const getStoredUsers = (): User[] => {
+    try {
+      const users = localStorage.getItem('eventcontrol-users')
+      return users ? JSON.parse(users) : []
+    } catch {
+      return []
+    }
+  }
+
+  const saveUser = (user: User) => {
+    const users = getStoredUsers()
+    users.push(user)
+    localStorage.setItem('eventcontrol-users', JSON.stringify(users))
+  }
+
+  const findUser = (username: string, email?: string): User | null => {
+    const users = getStoredUsers()
+    return users.find(u => u.username === username || (email && u.email === email)) || null
+  }
+
+  const handleRegister = async () => {
+    setIsLoading(true)
+    setLoginError('')
+
+    try {
+      // Validações
+      if (!loginData.username || !loginData.email || !loginData.password || !loginData.confirmPassword) {
+        setLoginError('Todos os campos são obrigatórios')
+        return
+      }
+
+      if (!validateEmail(loginData.email)) {
+        setLoginError('Email inválido')
+        return
+      }
+
+      if (!validatePassword(loginData.password)) {
+        setLoginError('Senha deve ter pelo menos 6 caracteres')
+        return
+      }
+
+      if (loginData.password !== loginData.confirmPassword) {
+        setLoginError('Senhas não coincidem')
+        return
+      }
+
+      // Verificar se usuário já existe
+      if (findUser(loginData.username, loginData.email)) {
+        setLoginError('Usuário ou email já existe')
+        return
+      }
+
+      // Criar novo usuário
+      const newUser: User = {
+        id: Date.now().toString(),
+        username: loginData.username,
+        email: loginData.email,
+        password: hashPassword(loginData.password),
+        role: 'user',
+        createdAt: new Date()
+      }
+
+      saveUser(newUser)
+      
+      // Login automático após registro
+      setCurrentUser(newUser)
+      setIsLoggedIn(true)
+      localStorage.setItem('eventcontrol-current-user', JSON.stringify(newUser))
+      
+      addNotification('success', 'Conta Criada', 'Sua conta foi criada com sucesso!')
+      
+    } catch (error) {
+      setLoginError('Erro ao criar conta. Tente novamente.')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleLogin = async () => {
+    setIsLoading(true)
+    setLoginError('')
+
+    try {
+      if (!loginData.username || !loginData.password) {
+        setLoginError('Usuário e senha são obrigatórios')
+        return
+      }
+
+      const user = findUser(loginData.username)
+      
+      if (!user || user.password !== hashPassword(loginData.password)) {
+        setLoginError('Usuário ou senha incorretos')
+        return
+      }
+
+      // Atualizar último login
+      user.lastLogin = new Date()
+      const users = getStoredUsers()
+      const updatedUsers = users.map(u => u.id === user.id ? user : u)
+      localStorage.setItem('eventcontrol-users', JSON.stringify(updatedUsers))
+
+      setCurrentUser(user)
+      setIsLoggedIn(true)
+      localStorage.setItem('eventcontrol-current-user', JSON.stringify(user))
+      
+      addNotification('success', 'Login Realizado', `Bem-vindo de volta, ${user.username}!`)
+      
+    } catch (error) {
+      setLoginError('Erro ao fazer login. Tente novamente.')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleLogout = () => {
+    setCurrentUser(null)
+    setIsLoggedIn(false)
+    setShowWelcome(true)
+    localStorage.removeItem('eventcontrol-current-user')
+    addNotification('info', 'Logout', 'Você foi desconectado com sucesso')
+  }
+
+  // Verificar se há usuário logado ao carregar
+  useEffect(() => {
+    const savedUser = localStorage.getItem('eventcontrol-current-user')
+    if (savedUser) {
+      try {
+        const user = JSON.parse(savedUser)
+        setCurrentUser(user)
+        setIsLoggedIn(true)
+        setShowLoginForm(false)
+      } catch {
+        localStorage.removeItem('eventcontrol-current-user')
+      }
+    }
+  }, [])
 
   // Função para formatar números com pontuação brasileira
   const formatCurrency = (value: number) => {
@@ -1283,6 +1466,189 @@ export default function EventControlPro() {
 
   const themeClasses = darkMode ? 'dark bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900' : 'bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50'
 
+  // Tela de Login
+  if (!isLoggedIn) {
+    return (
+      <div className={`min-h-screen transition-all duration-500 ${themeClasses} relative overflow-hidden flex items-center justify-center`}>
+        {/* Animated Background Elements */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-purple-400/20 to-pink-400/20 rounded-full blur-3xl animate-pulse"></div>
+          <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-br from-blue-400/20 to-cyan-400/20 rounded-full blur-3xl animate-pulse delay-1000"></div>
+          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-gradient-to-br from-indigo-400/10 to-purple-400/10 rounded-full blur-3xl animate-pulse delay-500"></div>
+        </div>
+
+        <div className="max-w-md mx-auto p-6 relative z-10 w-full">
+          <div className={`${darkMode ? 'bg-gray-800/90' : 'bg-white/90'} backdrop-blur-xl rounded-3xl p-8 shadow-2xl border border-white/20`}>
+            {/* Logo e Título */}
+            <div className="text-center mb-8">
+              <div className="flex items-center justify-center gap-3 mb-4">
+                <div className="p-4 bg-gradient-to-br from-purple-500 to-pink-600 rounded-3xl shadow-lg animate-pulse">
+                  <Shield className="w-10 h-10 text-white" />
+                </div>
+                <h1 className={`text-3xl font-bold bg-gradient-to-r from-purple-600 via-pink-600 to-indigo-600 bg-clip-text text-transparent`}>
+                  EventControl Pro
+                </h1>
+              </div>
+              <p className={`text-lg ${darkMode ? 'text-gray-300' : 'text-gray-600'} flex items-center justify-center gap-2`}>
+                <Lock className="w-5 h-5 text-purple-500" />
+                {isRegistering ? 'Criar Nova Conta' : 'Acesso Seguro'}
+              </p>
+            </div>
+
+            {/* Formulário de Login/Registro */}
+            <form onSubmit={(e) => {
+              e.preventDefault()
+              isRegistering ? handleRegister() : handleLogin()
+            }} className="space-y-6">
+              
+              {/* Campo Usuário */}
+              <div className="group">
+                <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2`}>
+                  Usuário
+                </label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input
+                    type="text"
+                    value={loginData.username}
+                    onChange={(e) => setLoginData({ ...loginData, username: e.target.value })}
+                    className={`w-full pl-10 pr-4 py-3 border rounded-xl focus:ring-2 focus:ring-purple-500 outline-none transition-all duration-300 group-hover:shadow-lg ${
+                      darkMode ? 'bg-gray-700/50 border-gray-600 text-white' : 'bg-white/50 border-gray-200'
+                    }`}
+                    placeholder="Digite seu usuário"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Campo Email (apenas no registro) */}
+              {isRegistering && (
+                <div className="group">
+                  <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2`}>
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    value={loginData.email}
+                    onChange={(e) => setLoginData({ ...loginData, email: e.target.value })}
+                    className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-purple-500 outline-none transition-all duration-300 group-hover:shadow-lg ${
+                      darkMode ? 'bg-gray-700/50 border-gray-600 text-white' : 'bg-white/50 border-gray-200'
+                    }`}
+                    placeholder="Digite seu email"
+                    required
+                  />
+                </div>
+              )}
+
+              {/* Campo Senha */}
+              <div className="group">
+                <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2`}>
+                  Senha
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={loginData.password}
+                    onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
+                    className={`w-full pl-10 pr-12 py-3 border rounded-xl focus:ring-2 focus:ring-purple-500 outline-none transition-all duration-300 group-hover:shadow-lg ${
+                      darkMode ? 'bg-gray-700/50 border-gray-600 text-white' : 'bg-white/50 border-gray-200'
+                    }`}
+                    placeholder="Digite sua senha"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors duration-200"
+                  >
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Campo Confirmar Senha (apenas no registro) */}
+              {isRegistering && (
+                <div className="group">
+                  <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2`}>
+                    Confirmar Senha
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      value={loginData.confirmPassword}
+                      onChange={(e) => setLoginData({ ...loginData, confirmPassword: e.target.value })}
+                      className={`w-full pl-10 pr-4 py-3 border rounded-xl focus:ring-2 focus:ring-purple-500 outline-none transition-all duration-300 group-hover:shadow-lg ${
+                        darkMode ? 'bg-gray-700/50 border-gray-600 text-white' : 'bg-white/50 border-gray-200'
+                      }`}
+                      placeholder="Confirme sua senha"
+                      required
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Mensagem de Erro */}
+              {loginError && (
+                <div className="p-3 bg-red-100 border border-red-300 rounded-xl text-red-700 text-sm flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4" />
+                  {loginError}
+                </div>
+              )}
+
+              {/* Botão de Submit */}
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full py-3 bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-xl hover:from-purple-600 hover:to-pink-700 transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isLoading ? (
+                  <RefreshCw className="w-5 h-5 animate-spin" />
+                ) : (
+                  <LogIn className="w-5 h-5" />
+                )}
+                {isLoading ? 'Processando...' : (isRegistering ? 'Criar Conta' : 'Entrar')}
+              </button>
+
+              {/* Toggle Login/Registro */}
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsRegistering(!isRegistering)
+                    setLoginError('')
+                    setLoginData({ username: '', password: '', email: '', confirmPassword: '' })
+                  }}
+                  className={`text-sm ${darkMode ? 'text-purple-400 hover:text-purple-300' : 'text-purple-600 hover:text-purple-700'} transition-colors duration-200`}
+                >
+                  {isRegistering ? 'Já tem uma conta? Faça login' : 'Não tem conta? Registre-se'}
+                </button>
+              </div>
+            </form>
+
+            {/* Botão de Configurações */}
+            <div className="flex justify-center mt-6">
+              <button
+                onClick={() => setDarkMode(!darkMode)}
+                className={`p-3 rounded-xl transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl ${
+                  darkMode 
+                    ? 'bg-gradient-to-r from-yellow-400 to-orange-500 text-gray-900' 
+                    : 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white'
+                }`}
+              >
+                {darkMode ? 
+                  <Sun className="w-5 h-5" /> : 
+                  <Moon className="w-5 h-5" />
+                }
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   // Tela de Boas-vindas
   if (showWelcome) {
     return (
@@ -1306,8 +1672,12 @@ export default function EventControlPro() {
               </h1>
             </div>
             
-            <p className={`text-xl mb-8 ${darkMode ? 'text-gray-300' : 'text-gray-600'} flex items-center justify-center gap-2`}>
+            <p className={`text-xl mb-4 ${darkMode ? 'text-gray-300' : 'text-gray-600'} flex items-center justify-center gap-2`}>
               <Sparkles className="w-6 h-6 text-purple-500" />
+              Bem-vindo, {currentUser?.username}!
+            </p>
+
+            <p className={`text-lg mb-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
               Gestão Completa de Eventos com IA e Analytics Avançados
             </p>
 
@@ -1378,8 +1748,8 @@ export default function EventControlPro() {
               ))}
             </div>
 
-            {/* Botão de Configurações */}
-            <div className="flex justify-center">
+            {/* Botões de Configurações */}
+            <div className="flex justify-center gap-4">
               <button
                 onClick={() => setDarkMode(!darkMode)}
                 className={`p-3 rounded-xl transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl ${
@@ -1392,6 +1762,14 @@ export default function EventControlPro() {
                   <Sun className="w-5 h-5" /> : 
                   <Moon className="w-5 h-5" />
                 }
+              </button>
+              
+              <button
+                onClick={handleLogout}
+                className="p-3 rounded-xl transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl bg-gradient-to-r from-red-500 to-pink-600 text-white"
+                title="Sair da conta"
+              >
+                <LogIn className="w-5 h-5 rotate-180" />
               </button>
             </div>
           </div>
@@ -1430,9 +1808,14 @@ export default function EventControlPro() {
               <div className="p-3 bg-gradient-to-br from-purple-500 to-pink-600 rounded-2xl shadow-lg animate-pulse">
                 <Rocket className="w-8 h-8 text-white" />
               </div>
-              <h1 className={`text-2xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-purple-600 via-pink-600 to-indigo-600 bg-clip-text text-transparent animate-gradient`}>
-                EventControl Pro
-              </h1>
+              <div>
+                <h1 className={`text-2xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-purple-600 via-pink-600 to-indigo-600 bg-clip-text text-transparent animate-gradient`}>
+                  EventControl Pro
+                </h1>
+                <p className={`text-xs sm:text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Logado como: {currentUser?.username}
+                </p>
+              </div>
             </div>
             <p className={`text-sm sm:text-lg mt-1 sm:mt-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'} flex items-center gap-2`}>
               <Sparkles className="w-4 h-4 text-purple-500" />
@@ -1510,6 +1893,15 @@ export default function EventControlPro() {
                 )}
               </button>
             </div>
+
+            {/* Botão de Logout */}
+            <button
+              onClick={handleLogout}
+              className="group p-2 sm:p-3 bg-gradient-to-r from-gray-500 via-gray-600 to-gray-700 text-white rounded-xl hover:from-gray-600 hover:via-gray-700 hover:to-gray-800 transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl"
+              title="Sair da conta"
+            >
+              <LogIn className="w-4 h-4 sm:w-5 sm:h-5 rotate-180 group-hover:scale-110 transition-transform duration-300" />
+            </button>
           </div>
         </div>
 
