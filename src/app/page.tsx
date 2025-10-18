@@ -49,7 +49,21 @@ import {
   Slider,
   Undo,
   Redo,
-  RotateCcw
+  RotateCcw,
+  History,
+  TrendingRight,
+  ArrowRight,
+  Sparkles,
+  LineChart,
+  Flame,
+  Crown,
+  Rocket,
+  Gem,
+  Palette,
+  Layers,
+  Gauge,
+  Play,
+  FolderOpen
 } from 'lucide-react'
 
 interface Event {
@@ -155,8 +169,55 @@ interface UndoAction {
   description: string
 }
 
+// Interfaces para o simulador
+interface PastEventData {
+  name: string
+  totalRevenue: number
+  barRevenue: number
+  lojaRevenue: number
+  ticketRevenue: number
+  totalCosts: number
+  attendees: number
+  ticketPrice: number
+  products: {
+    name: string
+    category: 'bar' | 'loja'
+    sold: number
+    price: number
+    cost: number
+  }[]
+}
+
+interface CurrentEventData {
+  name: string
+  estimatedAttendees: number
+  ticketPrice: number
+  totalCosts: number
+  fixedCosts: number
+  variableCosts: number
+}
+
+interface SimulationResult {
+  breakEvenTickets: number
+  breakEvenRevenue: number
+  recommendedProducts: {
+    name: string
+    category: 'bar' | 'loja'
+    quantity: number
+    expectedRevenue: number
+    expectedProfit: number
+  }[]
+  profitProjections: {
+    conservative: number
+    realistic: number
+    optimistic: number
+  }
+}
+
 export default function EventControlPro() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'ingressos' | 'bar' | 'loja' | 'relatorio' | 'despesas'>('dashboard')
+  const [showWelcome, setShowWelcome] = useState(true)
+  const [hasExistingEvents, setHasExistingEvents] = useState(false)
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'ingressos' | 'bar' | 'loja' | 'relatorio' | 'simulador'>('dashboard')
   const [darkMode, setDarkMode] = useState(false)
   const [showCalculator, setShowCalculator] = useState(false)
   const [calculatorValue, setCalculatorValue] = useState('')
@@ -172,10 +233,35 @@ export default function EventControlPro() {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [templates, setTemplates] = useState<EventTemplate[]>([])
   const [ticketInfo, setTicketInfo] = useState<TicketInfo>({
-    currentTicketPrice: 50,
+    currentTicketPrice: 0,
     ticketsSold: 0,
-    eventTotalCost: 15000
+    eventTotalCost: 0
   })
+  
+  // Simulador states
+  const [pastEventData, setPastEventData] = useState<PastEventData>({
+    name: '',
+    totalRevenue: 0,
+    barRevenue: 0,
+    lojaRevenue: 0,
+    ticketRevenue: 0,
+    totalCosts: 0,
+    attendees: 0,
+    ticketPrice: 0,
+    products: []
+  })
+  
+  const [currentEventData, setCurrentEventData] = useState<CurrentEventData>({
+    name: '',
+    estimatedAttendees: 0,
+    ticketPrice: 0,
+    totalCosts: 0,
+    fixedCosts: 0,
+    variableCosts: 0
+  })
+  
+  const [simulationResult, setSimulationResult] = useState<SimulationResult | null>(null)
+  const [simulatorStep, setSimulatorStep] = useState<'past' | 'current' | 'results'>('past')
   
   // Undo/Redo functionality
   const [undoHistory, setUndoHistory] = useState<UndoAction[]>([])
@@ -218,6 +304,274 @@ export default function EventControlPro() {
 
   const formatNumber = (value: number) => {
     return value.toLocaleString('pt-BR')
+  }
+
+  // Função para iniciar novo evento
+  const startNewEvent = () => {
+    // Zerar todos os dados
+    setProducts([])
+    setSales([])
+    setExpenses([])
+    setRevenues([])
+    setTicketInfo({
+      currentTicketPrice: 0,
+      ticketsSold: 0,
+      eventTotalCost: 0
+    })
+    setExpenseCategories([
+      {
+        id: '1',
+        name: 'Decoração',
+        expanded: false,
+        items: []
+      },
+      {
+        id: '2',
+        name: 'Marketing',
+        expanded: false,
+        items: []
+      },
+      {
+        id: '3',
+        name: 'Logística',
+        expanded: false,
+        items: []
+      },
+      {
+        id: '4',
+        name: 'Passagem Aérea',
+        expanded: false,
+        items: []
+      },
+      {
+        id: '5',
+        name: 'Artista',
+        expanded: false,
+        items: []
+      },
+      {
+        id: '6',
+        name: 'Hotel',
+        expanded: false,
+        items: []
+      },
+      {
+        id: '7',
+        name: 'Alimentação',
+        expanded: false,
+        items: []
+      }
+    ])
+    setUndoHistory([])
+    setRedoHistory([])
+    
+    // Zerar dados do simulador
+    setPastEventData({
+      name: '',
+      totalRevenue: 0,
+      barRevenue: 0,
+      lojaRevenue: 0,
+      ticketRevenue: 0,
+      totalCosts: 0,
+      attendees: 0,
+      ticketPrice: 0,
+      products: []
+    })
+    
+    setCurrentEventData({
+      name: '',
+      estimatedAttendees: 0,
+      ticketPrice: 0,
+      totalCosts: 0,
+      fixedCosts: 0,
+      variableCosts: 0
+    })
+    
+    setSimulationResult(null)
+    setSimulatorStep('past')
+    
+    setShowWelcome(false)
+    addNotification('success', 'Novo Evento', 'Sistema zerado! Agora você pode inserir os dados do seu evento.')
+  }
+
+  // Função para acessar eventos existentes
+  const accessExistingEvents = () => {
+    setShowWelcome(false)
+    addNotification('info', 'Eventos Carregados', 'Seus eventos existentes foram carregados com sucesso!')
+  }
+
+  // Função para zerar todos os dados - CORRIGIDA
+  const resetAllData = () => {
+    if (window.confirm('⚠️ ATENÇÃO: Esta ação irá zerar TODOS os dados do sistema (produtos, vendas, ingressos, despesas, etc.). Você tem certeza que deseja continuar?')) {
+      try {
+        // Zerar todos os estados
+        setProducts([])
+        setSales([])
+        setExpenses([])
+        setRevenues([])
+        setTicketInfo({
+          currentTicketPrice: 0,
+          ticketsSold: 0,
+          eventTotalCost: 0
+        })
+        setExpenseCategories([
+          {
+            id: '1',
+            name: 'Decoração',
+            expanded: false,
+            items: []
+          },
+          {
+            id: '2',
+            name: 'Marketing',
+            expanded: false,
+            items: []
+          },
+          {
+            id: '3',
+            name: 'Logística',
+            expanded: false,
+            items: []
+          },
+          {
+            id: '4',
+            name: 'Passagem Aérea',
+            expanded: false,
+            items: []
+          },
+          {
+            id: '5',
+            name: 'Artista',
+            expanded: false,
+            items: []
+          },
+          {
+            id: '6',
+            name: 'Hotel',
+            expanded: false,
+            items: []
+          },
+          {
+            id: '7',
+            name: 'Alimentação',
+            expanded: false,
+            items: []
+          }
+        ])
+        setUndoHistory([])
+        setRedoHistory([])
+        
+        // Zerar dados do simulador
+        setPastEventData({
+          name: '',
+          totalRevenue: 0,
+          barRevenue: 0,
+          lojaRevenue: 0,
+          ticketRevenue: 0,
+          totalCosts: 0,
+          attendees: 0,
+          ticketPrice: 0,
+          products: []
+        })
+        
+        setCurrentEventData({
+          name: '',
+          estimatedAttendees: 0,
+          ticketPrice: 0,
+          totalCosts: 0,
+          fixedCosts: 0,
+          variableCosts: 0
+        })
+        
+        setSimulationResult(null)
+        setSimulatorStep('past')
+        
+        // Limpar localStorage
+        const keysToRemove = [
+          'eventcontrol-products',
+          'eventcontrol-sales',
+          'eventcontrol-expenses',
+          'eventcontrol-revenues',
+          'eventcontrol-ticketinfo',
+          'eventcontrol-expensecategories',
+          'eventcontrol-undohistory',
+          'eventcontrol-pasteventdata',
+          'eventcontrol-currenteventdata',
+          'eventcontrol-simulationresult'
+        ]
+        
+        keysToRemove.forEach(key => {
+          try {
+            localStorage.removeItem(key)
+          } catch (error) {
+            console.warn(`Erro ao remover ${key} do localStorage:`, error)
+          }
+        })
+        
+        addNotification('success', 'Sistema Zerado', 'Todos os dados foram zerados com sucesso! Agora você pode inserir os dados do seu evento.')
+      } catch (error) {
+        console.error('Erro ao zerar dados:', error)
+        addNotification('error', 'Erro', 'Ocorreu um erro ao zerar os dados. Tente novamente.')
+      }
+    }
+  }
+
+  // Função para calcular simulação
+  const calculateSimulation = () => {
+    if (!pastEventData.totalRevenue || !currentEventData.totalCosts) {
+      addNotification('warning', 'Dados Incompletos', 'Preencha todos os dados necessários para a simulação')
+      return
+    }
+
+    // Calcular ponto de equilíbrio
+    const breakEvenRevenue = currentEventData.totalCosts
+    const breakEvenTickets = Math.ceil(breakEvenRevenue / currentEventData.ticketPrice)
+
+    // Calcular eficiência do evento passado
+    const pastEfficiency = pastEventData.totalRevenue / pastEventData.attendees
+    const pastBarEfficiency = pastEventData.barRevenue / pastEventData.attendees
+    const pastLojaEfficiency = pastEventData.lojaRevenue / pastEventData.attendees
+
+    // Projetar produtos necessários baseado na eficiência passada
+    const recommendedProducts = pastEventData.products.map(product => {
+      const efficiency = product.sold / pastEventData.attendees
+      const projectedQuantity = Math.ceil(efficiency * currentEventData.estimatedAttendees)
+      const expectedRevenue = projectedQuantity * product.price
+      const expectedProfit = projectedQuantity * (product.price - product.cost)
+
+      return {
+        name: product.name,
+        category: product.category,
+        quantity: projectedQuantity,
+        expectedRevenue,
+        expectedProfit
+      }
+    })
+
+    // Calcular projeções de lucro
+    const conservativeMultiplier = 0.8
+    const realisticMultiplier = 1.0
+    const optimisticMultiplier = 1.3
+
+    const baseProfit = (currentEventData.estimatedAttendees * pastEfficiency) - currentEventData.totalCosts
+
+    const profitProjections = {
+      conservative: baseProfit * conservativeMultiplier,
+      realistic: baseProfit * realisticMultiplier,
+      optimistic: baseProfit * optimisticMultiplier
+    }
+
+    const result: SimulationResult = {
+      breakEvenTickets,
+      breakEvenRevenue,
+      recommendedProducts,
+      profitProjections
+    }
+
+    setSimulationResult(result)
+    setSimulatorStep('results')
+    
+    addNotification('success', 'Simulação Concluída', 'Análise completa do seu evento foi gerada!')
   }
 
   // Undo/Redo functions
@@ -296,7 +650,10 @@ export default function EventControlPro() {
       templates: localStorage.getItem('eventcontrol-templates'),
       ticketInfo: localStorage.getItem('eventcontrol-ticketinfo'),
       darkMode: localStorage.getItem('eventcontrol-darkmode'),
-      undoHistory: localStorage.getItem('eventcontrol-undohistory')
+      undoHistory: localStorage.getItem('eventcontrol-undohistory'),
+      pastEventData: localStorage.getItem('eventcontrol-pasteventdata'),
+      currentEventData: localStorage.getItem('eventcontrol-currenteventdata'),
+      simulationResult: localStorage.getItem('eventcontrol-simulationresult')
     }
 
     if (savedData.events) setEvents(JSON.parse(savedData.events))
@@ -310,6 +667,13 @@ export default function EventControlPro() {
     if (savedData.ticketInfo) setTicketInfo(JSON.parse(savedData.ticketInfo))
     if (savedData.darkMode) setDarkMode(JSON.parse(savedData.darkMode))
     if (savedData.undoHistory) setUndoHistory(JSON.parse(savedData.undoHistory))
+    if (savedData.pastEventData) setPastEventData(JSON.parse(savedData.pastEventData))
+    if (savedData.currentEventData) setCurrentEventData(JSON.parse(savedData.currentEventData))
+    if (savedData.simulationResult) setSimulationResult(JSON.parse(savedData.simulationResult))
+
+    // Verificar se há dados existentes
+    const hasData = savedData.products || savedData.sales || savedData.expenses || savedData.ticketInfo
+    setHasExistingEvents(!!hasData)
   }, [])
 
   // Save to localStorage whenever data changes
@@ -357,111 +721,21 @@ export default function EventControlPro() {
     localStorage.setItem('eventcontrol-undohistory', JSON.stringify(undoHistory))
   }, [undoHistory])
 
+  useEffect(() => {
+    localStorage.setItem('eventcontrol-pasteventdata', JSON.stringify(pastEventData))
+  }, [pastEventData])
+
+  useEffect(() => {
+    localStorage.setItem('eventcontrol-currenteventdata', JSON.stringify(currentEventData))
+  }, [currentEventData])
+
+  useEffect(() => {
+    localStorage.setItem('eventcontrol-simulationresult', JSON.stringify(simulationResult))
+  }, [simulationResult])
+
   // Initialize with sample data if empty
   useEffect(() => {
-    if (events.length === 0) {
-      const sampleEvents: Event[] = [
-        {
-          id: '1',
-          name: 'Festival de Verão 2024',
-          date: '2024-12-15',
-          location: 'Parque Central',
-          attendees: 500,
-          budget: 25000,
-          status: 'active',
-          priority: 'high',
-          description: 'Grande festival de música com bar e loja de souvenirs'
-        }
-      ]
-      
-      const sampleProducts: Product[] = [
-        {
-          id: '1',
-          name: 'Cerveja Artesanal',
-          category: 'bar',
-          type: 'package',
-          purchasePrice: 3.50, // Custo individual
-          unitPrice: 3.50,
-          packagePrice: 84.00,
-          packageUnits: 24,
-          salePrice: 8.00,
-          quantity: 192,
-          packageQuantity: 8,
-          sold: 45,
-          returnedPackages: 0,
-          remainingUnits: 0
-        },
-        {
-          id: '2',
-          name: 'Camiseta do Evento',
-          category: 'loja',
-          type: 'unit',
-          purchasePrice: 15.00, // Custo individual
-          unitPrice: 15.00,
-          packagePrice: 15.00,
-          packageUnits: 1,
-          salePrice: 35.00,
-          quantity: 100,
-          packageQuantity: 100,
-          sold: 23,
-          returnedPackages: 0,
-          remainingUnits: 0
-        },
-        {
-          id: '3',
-          name: 'Água Mineral',
-          category: 'bar',
-          type: 'package',
-          purchasePrice: 1.00, // Custo individual
-          unitPrice: 1.00,
-          packagePrice: 12.00,
-          packageUnits: 12,
-          salePrice: 3.00,
-          quantity: 300,
-          packageQuantity: 25,
-          sold: 87,
-          returnedPackages: 0,
-          remainingUnits: 0
-        },
-        {
-          id: '4',
-          name: 'Gelo em Cubo',
-          category: 'bar',
-          type: 'unit',
-          purchasePrice: 5.00, // Custo individual
-          unitPrice: 5.00,
-          packagePrice: 5.00,
-          packageUnits: 1,
-          salePrice: 10.00,
-          quantity: 50,
-          packageQuantity: 50,
-          sold: 12,
-          returnedPackages: 0,
-          remainingUnits: 0
-        }
-      ]
-
-      const sampleSales: Sale[] = [
-        {
-          id: '1',
-          productId: '1',
-          quantity: 45,
-          unitPrice: 8.00,
-          total: 360.00,
-          date: '2024-10-08',
-          category: 'bar'
-        },
-        {
-          id: '2',
-          productId: '2',
-          quantity: 23,
-          unitPrice: 35.00,
-          total: 805.00,
-          date: '2024-10-08',
-          category: 'loja'
-        }
-      ]
-
+    if (expenseCategories.length === 0) {
       const sampleExpenseCategories: ExpenseCategory[] = [
         {
           id: '1',
@@ -507,27 +781,9 @@ export default function EventControlPro() {
         }
       ]
 
-      const sampleTemplates: EventTemplate[] = [
-        {
-          id: '1',
-          name: 'Festival Musical',
-          description: 'Template para festivais de música com bar e loja',
-          estimatedBudget: 25000,
-          categories: ['sound', 'food', 'security', 'marketing'],
-          products: [
-            { name: 'Cerveja', category: 'bar', purchasePrice: 3.50, salePrice: 8.00 },
-            { name: 'Camiseta', category: 'loja', purchasePrice: 15.00, salePrice: 35.00 }
-          ]
-        }
-      ]
-      
-      setEvents(sampleEvents)
-      setProducts(sampleProducts)
-      setSales(sampleSales)
       setExpenseCategories(sampleExpenseCategories)
-      setTemplates(sampleTemplates)
     }
-  }, [events.length])
+  }, [expenseCategories.length])
 
   // Calculator functions
   const handleCalculatorInput = (value: string) => {
@@ -1025,74 +1281,230 @@ export default function EventControlPro() {
     return result
   }
 
-  const themeClasses = darkMode ? 'dark bg-gray-900' : 'bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50'
+  const themeClasses = darkMode ? 'dark bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900' : 'bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50'
+
+  // Tela de Boas-vindas
+  if (showWelcome) {
+    return (
+      <div className={`min-h-screen transition-all duration-500 ${themeClasses} relative overflow-hidden flex items-center justify-center`}>
+        {/* Animated Background Elements */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-purple-400/20 to-pink-400/20 rounded-full blur-3xl animate-pulse"></div>
+          <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-br from-blue-400/20 to-cyan-400/20 rounded-full blur-3xl animate-pulse delay-1000"></div>
+          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-gradient-to-br from-indigo-400/10 to-purple-400/10 rounded-full blur-3xl animate-pulse delay-500"></div>
+        </div>
+
+        <div className="max-w-4xl mx-auto p-6 relative z-10">
+          <div className={`${darkMode ? 'bg-gray-800/80' : 'bg-white/80'} backdrop-blur-xl rounded-3xl p-8 shadow-2xl border border-white/20 text-center`}>
+            {/* Logo e Título */}
+            <div className="flex items-center justify-center gap-4 mb-6">
+              <div className="p-4 bg-gradient-to-br from-purple-500 to-pink-600 rounded-3xl shadow-lg animate-pulse">
+                <Rocket className="w-12 h-12 text-white" />
+              </div>
+              <h1 className={`text-4xl lg:text-6xl font-bold bg-gradient-to-r from-purple-600 via-pink-600 to-indigo-600 bg-clip-text text-transparent animate-gradient`}>
+                EventControl Pro
+              </h1>
+            </div>
+            
+            <p className={`text-xl mb-8 ${darkMode ? 'text-gray-300' : 'text-gray-600'} flex items-center justify-center gap-2`}>
+              <Sparkles className="w-6 h-6 text-purple-500" />
+              Gestão Completa de Eventos com IA e Analytics Avançados
+            </p>
+
+            {/* Opções de Início */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+              {/* Iniciar Novo Evento */}
+              <div className={`${darkMode ? 'bg-gray-700/50' : 'bg-gradient-to-br from-green-50 to-emerald-50'} p-6 rounded-2xl border-2 border-dashed ${darkMode ? 'border-green-400/30' : 'border-green-300'} hover:border-green-500 transition-all duration-300 group cursor-pointer`}
+                   onClick={startNewEvent}>
+                <div className="flex flex-col items-center text-center">
+                  <div className="p-4 bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl mb-4 group-hover:scale-110 transition-transform duration-300">
+                    <Play className="w-8 h-8 text-white" />
+                  </div>
+                  <h3 className={`text-xl font-bold mb-2 ${darkMode ? 'text-green-400' : 'text-green-700'}`}>
+                    Iniciar Novo Evento
+                  </h3>
+                  <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-4`}>
+                    Comece do zero com um sistema limpo para inserir os dados do seu evento
+                  </p>
+                  <div className="flex items-center gap-2 text-green-600">
+                    <Sparkles className="w-4 h-4" />
+                    <span className="text-sm font-medium">Sistema Zerado</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Acessar Eventos Existentes */}
+              <div className={`${darkMode ? 'bg-gray-700/50' : 'bg-gradient-to-br from-blue-50 to-indigo-50'} p-6 rounded-2xl border-2 border-dashed ${hasExistingEvents ? (darkMode ? 'border-blue-400/30' : 'border-blue-300') : 'border-gray-300'} ${hasExistingEvents ? 'hover:border-blue-500 cursor-pointer' : 'opacity-50 cursor-not-allowed'} transition-all duration-300 group`}
+                   onClick={hasExistingEvents ? accessExistingEvents : undefined}>
+                <div className="flex flex-col items-center text-center">
+                  <div className={`p-4 rounded-2xl mb-4 group-hover:scale-110 transition-transform duration-300 ${hasExistingEvents ? 'bg-gradient-to-r from-blue-500 to-indigo-600' : 'bg-gray-400'}`}>
+                    <FolderOpen className="w-8 h-8 text-white" />
+                  </div>
+                  <h3 className={`text-xl font-bold mb-2 ${hasExistingEvents ? (darkMode ? 'text-blue-400' : 'text-blue-700') : 'text-gray-500'}`}>
+                    Acessar Eventos Existentes
+                  </h3>
+                  <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-4`}>
+                    {hasExistingEvents 
+                      ? 'Continue trabalhando com os dados salvos anteriormente'
+                      : 'Nenhum evento encontrado no sistema'
+                    }
+                  </p>
+                  <div className={`flex items-center gap-2 ${hasExistingEvents ? 'text-blue-600' : 'text-gray-400'}`}>
+                    <History className="w-4 h-4" />
+                    <span className="text-sm font-medium">
+                      {hasExistingEvents ? 'Dados Salvos' : 'Sem Dados'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Recursos Destacados */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+              {[
+                { icon: LineChart, label: 'Simulador IA', color: 'from-cyan-500 to-blue-600' },
+                { icon: BarChart3, label: 'Analytics', color: 'from-purple-500 to-pink-600' },
+                { icon: Coffee, label: 'Gestão Bar', color: 'from-orange-500 to-red-600' },
+                { icon: ShoppingCart, label: 'Gestão Loja', color: 'from-green-500 to-emerald-600' }
+              ].map((feature, index) => (
+                <div key={index} className={`${darkMode ? 'bg-gray-700/30' : 'bg-white/50'} p-4 rounded-xl text-center group hover:scale-105 transition-all duration-300`}>
+                  <div className={`p-3 bg-gradient-to-r ${feature.color} rounded-lg mb-2 mx-auto w-fit group-hover:rotate-12 transition-transform duration-300`}>
+                    <feature.icon className="w-5 h-5 text-white" />
+                  </div>
+                  <span className={`text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    {feature.label}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* Botão de Configurações */}
+            <div className="flex justify-center">
+              <button
+                onClick={() => setDarkMode(!darkMode)}
+                className={`p-3 rounded-xl transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl ${
+                  darkMode 
+                    ? 'bg-gradient-to-r from-yellow-400 to-orange-500 text-gray-900' 
+                    : 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white'
+                }`}
+              >
+                {darkMode ? 
+                  <Sun className="w-5 h-5" /> : 
+                  <Moon className="w-5 h-5" />
+                }
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Add custom CSS for animations */}
+        <style jsx>{`
+          @keyframes gradient {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+          }
+          
+          .animate-gradient {
+            background-size: 200% 200%;
+            animation: gradient 3s ease infinite;
+          }
+        `}</style>
+      </div>
+    )
+  }
 
   return (
-    <div className={`min-h-screen transition-all duration-300 ${themeClasses}`}>
-      <div className="max-w-7xl mx-auto p-2 sm:p-4 lg:p-6">
-        {/* Header - Mobile Optimized */}
+    <div className={`min-h-screen transition-all duration-500 ${themeClasses} relative overflow-hidden`}>
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-purple-400/20 to-pink-400/20 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-br from-blue-400/20 to-cyan-400/20 rounded-full blur-3xl animate-pulse delay-1000"></div>
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-gradient-to-br from-indigo-400/10 to-purple-400/10 rounded-full blur-3xl animate-pulse delay-500"></div>
+      </div>
+
+      <div className="max-w-7xl mx-auto p-2 sm:p-4 lg:p-6 relative z-10">
+        {/* Header - Enhanced with animations */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 sm:mb-8 gap-4">
           <div className="w-full sm:w-auto">
-            <h1 className={`text-2xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent`}>
-              EventControl Pro
-            </h1>
-            <p className={`text-sm sm:text-lg mt-1 sm:mt-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-              Gestão Completa de Eventos com Bar e Loja
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-3 bg-gradient-to-br from-purple-500 to-pink-600 rounded-2xl shadow-lg animate-pulse">
+                <Rocket className="w-8 h-8 text-white" />
+              </div>
+              <h1 className={`text-2xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-purple-600 via-pink-600 to-indigo-600 bg-clip-text text-transparent animate-gradient`}>
+                EventControl Pro
+              </h1>
+            </div>
+            <p className={`text-sm sm:text-lg mt-1 sm:mt-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'} flex items-center gap-2`}>
+              <Sparkles className="w-4 h-4 text-purple-500" />
+              Gestão Completa de Eventos com IA e Analytics Avançados
             </p>
           </div>
           
           <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto justify-end">
-            {/* Undo/Redo Buttons */}
+            {/* Enhanced Action Buttons */}
+            <button
+              onClick={resetAllData}
+              className="group p-2 sm:p-3 bg-gradient-to-r from-red-500 via-pink-500 to-red-600 text-white rounded-xl hover:from-red-600 hover:via-pink-600 hover:to-red-700 transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl"
+              title="Zerar todos os dados para inserir dados do seu evento"
+            >
+              <RotateCcw className="w-4 h-4 sm:w-5 sm:h-5 group-hover:rotate-180 transition-transform duration-300" />
+            </button>
+            
             <button
               onClick={performUndo}
               disabled={undoHistory.length === 0}
-              className={`p-2 sm:p-3 rounded-xl transition-all duration-300 hover:scale-105 shadow-lg ${
+              className={`group p-2 sm:p-3 rounded-xl transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl ${
                 undoHistory.length === 0 
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
-                  : 'bg-gradient-to-r from-yellow-500 to-orange-600 text-white hover:from-yellow-600 hover:to-orange-700'
+                  : 'bg-gradient-to-r from-yellow-500 via-orange-500 to-yellow-600 text-white hover:from-yellow-600 hover:via-orange-600 hover:to-yellow-700'
               }`}
               title="Desfazer"
             >
-              <Undo className="w-4 h-4 sm:w-5 sm:h-5" />
+              <Undo className="w-4 h-4 sm:w-5 sm:h-5 group-hover:-translate-x-1 transition-transform duration-300" />
             </button>
             
             <button
               onClick={performRedo}
               disabled={redoHistory.length === 0}
-              className={`p-2 sm:p-3 rounded-xl transition-all duration-300 hover:scale-105 shadow-lg ${
+              className={`group p-2 sm:p-3 rounded-xl transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl ${
                 redoHistory.length === 0 
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
-                  : 'bg-gradient-to-r from-orange-500 to-red-600 text-white hover:from-orange-600 hover:to-red-700'
+                  : 'bg-gradient-to-r from-orange-500 via-red-500 to-orange-600 text-white hover:from-orange-600 hover:via-red-600 hover:to-orange-700'
               }`}
               title="Refazer"
             >
-              <Redo className="w-4 h-4 sm:w-5 sm:h-5" />
+              <Redo className="w-4 h-4 sm:w-5 sm:h-5 group-hover:translate-x-1 transition-transform duration-300" />
             </button>
             
             <button
               onClick={() => setDarkMode(!darkMode)}
-              className={`p-2 sm:p-3 rounded-xl transition-all duration-300 hover:scale-105 ${
-                darkMode ? 'bg-gray-800 text-yellow-400' : 'bg-white text-gray-600'
-              } shadow-lg`}
+              className={`group p-2 sm:p-3 rounded-xl transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl ${
+                darkMode 
+                  ? 'bg-gradient-to-r from-yellow-400 to-orange-500 text-gray-900' 
+                  : 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white'
+              }`}
             >
-              {darkMode ? <Sun className="w-4 h-4 sm:w-5 sm:h-5" /> : <Moon className="w-4 h-4 sm:w-5 sm:h-5" />}
+              {darkMode ? 
+                <Sun className="w-4 h-4 sm:w-5 sm:h-5 group-hover:rotate-180 transition-transform duration-500" /> : 
+                <Moon className="w-4 h-4 sm:w-5 sm:h-5 group-hover:rotate-12 transition-transform duration-300" />
+              }
             </button>
             
             <button
               onClick={() => setShowCalculator(!showCalculator)}
-              className="p-2 sm:p-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl hover:from-green-600 hover:to-emerald-700 transition-all duration-300 hover:scale-105 shadow-lg"
+              className="group p-2 sm:p-3 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:via-teal-600 hover:to-emerald-700 transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl"
             >
-              <Calculator className="w-4 h-4 sm:w-5 sm:h-5" />
+              <Calculator className="w-4 h-4 sm:w-5 sm:h-5 group-hover:scale-110 transition-transform duration-300" />
             </button>
             
             <div className="relative">
               <button
                 onClick={() => setShowNotifications(!showNotifications)}
-                className="p-2 sm:p-3 bg-gradient-to-r from-orange-500 to-red-600 text-white rounded-xl hover:from-orange-600 hover:to-red-700 transition-all duration-300 hover:scale-105 shadow-lg relative"
+                className="group p-2 sm:p-3 bg-gradient-to-r from-purple-500 via-pink-500 to-purple-600 text-white rounded-xl hover:from-purple-600 hover:via-pink-600 hover:to-purple-700 transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl relative"
               >
-                <Bell className="w-4 h-4 sm:w-5 sm:h-5" />
+                <Bell className="w-4 h-4 sm:w-5 sm:h-5 group-hover:animate-bounce" />
                 {notifications.filter(n => !n.read).length > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-yellow-400 text-yellow-900 text-xs rounded-full w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center font-bold animate-pulse">
+                  <span className="absolute -top-1 -right-1 bg-gradient-to-r from-yellow-400 to-orange-500 text-gray-900 text-xs rounded-full w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center font-bold animate-pulse">
                     {notifications.filter(n => !n.read).length}
                   </span>
                 )}
@@ -1101,184 +1513,535 @@ export default function EventControlPro() {
           </div>
         </div>
 
-        {/* Navigation Tabs - Mobile Optimized */}
-        <div className={`${darkMode ? 'bg-gray-800' : 'bg-white/70'} backdrop-blur-sm rounded-2xl p-2 shadow-lg mb-4 sm:mb-8`}>
+        {/* Enhanced Navigation Tabs */}
+        <div className={`${darkMode ? 'bg-gray-800/80' : 'bg-white/80'} backdrop-blur-xl rounded-2xl p-2 shadow-2xl mb-4 sm:mb-8 border border-white/20`}>
           <div className="flex flex-wrap gap-1 sm:gap-2">
             {[
-              { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
-              { id: 'ingressos', label: 'Ingressos', icon: Ticket },
-              { id: 'bar', label: 'Bar', icon: Coffee },
-              { id: 'loja', label: 'Loja', icon: ShoppingCart },
-              { id: 'relatorio', label: 'Relatório', icon: FileText }
+              { id: 'dashboard', label: 'Dashboard', icon: BarChart3, gradient: 'from-blue-500 to-cyan-600' },
+              { id: 'simulador', label: 'Simulador', icon: LineChart, gradient: 'from-purple-500 to-pink-600' },
+              { id: 'ingressos', label: 'Ingressos', icon: Ticket, gradient: 'from-indigo-500 to-purple-600' },
+              { id: 'bar', label: 'Bar', icon: Coffee, gradient: 'from-orange-500 to-red-600' },
+              { id: 'loja', label: 'Loja', icon: ShoppingCart, gradient: 'from-pink-500 to-rose-600' },
+              { id: 'relatorio', label: 'Relatório', icon: FileText, gradient: 'from-emerald-500 to-teal-600' }
             ].map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-6 py-2 sm:py-3 rounded-xl font-medium transition-all duration-300 text-xs sm:text-sm ${
+                className={`group flex items-center gap-1 sm:gap-2 px-3 sm:px-6 py-2 sm:py-3 rounded-xl font-medium transition-all duration-300 text-xs sm:text-sm hover:scale-105 ${
                   activeTab === tab.id
-                    ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg'
+                    ? `bg-gradient-to-r ${tab.gradient} text-white shadow-lg transform scale-105`
                     : darkMode
-                    ? 'text-gray-300 hover:bg-gray-700'
+                    ? 'text-gray-300 hover:bg-gray-700/50'
                     : 'text-gray-600 hover:bg-white/50'
                 }`}
               >
-                <tab.icon className="w-3 h-3 sm:w-4 sm:h-4" />
+                <tab.icon className={`w-3 h-3 sm:w-4 sm:h-4 ${activeTab === tab.id ? 'animate-pulse' : 'group-hover:scale-110'} transition-transform duration-300`} />
                 <span className="hidden sm:inline">{tab.label}</span>
               </button>
             ))}
           </div>
         </div>
 
-        {/* Dashboard Tab */}
+        {/* Dashboard Tab - Enhanced */}
         {activeTab === 'dashboard' && (
           <div className="space-y-4 sm:space-y-8">
-            {/* Summary Cards - Mobile Optimized */}
+            {/* Enhanced Summary Cards */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
-              <div className={`${darkMode ? 'bg-gray-800' : 'bg-gradient-to-br from-green-100 to-emerald-100'} p-3 sm:p-6 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105`}>
+              <div className={`group ${darkMode ? 'bg-gray-800/80' : 'bg-white/80'} backdrop-blur-xl p-3 sm:p-6 rounded-2xl shadow-xl hover:shadow-2xl transition-all duration-500 hover:scale-105 border border-emerald-200/20`}>
                 <div className="flex items-center justify-between">
                   <div>
                     <p className={`${darkMode ? 'text-emerald-400' : 'text-emerald-600'} font-medium flex items-center gap-1 sm:gap-2 text-xs sm:text-sm`}>
-                      <TrendingUp className="w-3 h-3 sm:w-4 sm:h-4" />
+                      <TrendingUp className="w-3 h-3 sm:w-4 sm:h-4 group-hover:animate-bounce" />
                       Receita Total
                     </p>
-                    <p className={`text-lg sm:text-2xl font-bold ${darkMode ? 'text-emerald-300' : 'text-emerald-800'}`}>
+                    <p className={`text-lg sm:text-2xl font-bold ${darkMode ? 'text-emerald-300' : 'text-emerald-800'} group-hover:scale-110 transition-transform duration-300`}>
                       {formatCurrency(getTotalRevenue())}
                     </p>
                   </div>
-                  <div className={`${darkMode ? 'bg-emerald-900' : 'bg-emerald-200'} p-2 sm:p-3 rounded-full`}>
+                  <div className={`${darkMode ? 'bg-emerald-900/50' : 'bg-emerald-200/50'} p-2 sm:p-3 rounded-full group-hover:rotate-12 transition-transform duration-300`}>
                     <TrendingUp className={`w-4 h-4 sm:w-6 sm:h-6 ${darkMode ? 'text-emerald-400' : 'text-emerald-700'}`} />
                   </div>
                 </div>
               </div>
 
-              <div className={`${darkMode ? 'bg-gray-800' : 'bg-gradient-to-br from-red-100 to-pink-100'} p-3 sm:p-6 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105`}>
+              <div className={`group ${darkMode ? 'bg-gray-800/80' : 'bg-white/80'} backdrop-blur-xl p-3 sm:p-6 rounded-2xl shadow-xl hover:shadow-2xl transition-all duration-500 hover:scale-105 border border-pink-200/20`}>
                 <div className="flex items-center justify-between">
                   <div>
                     <p className={`${darkMode ? 'text-pink-400' : 'text-pink-600'} font-medium flex items-center gap-1 sm:gap-2 text-xs sm:text-sm`}>
-                      <TrendingDown className="w-3 h-3 sm:w-4 sm:h-4" />
+                      <TrendingDown className="w-3 h-3 sm:w-4 sm:h-4 group-hover:animate-bounce" />
                       Investimento
                     </p>
-                    <p className={`text-lg sm:text-2xl font-bold ${darkMode ? 'text-pink-300' : 'text-pink-800'}`}>
+                    <p className={`text-lg sm:text-2xl font-bold ${darkMode ? 'text-pink-300' : 'text-pink-800'} group-hover:scale-110 transition-transform duration-300`}>
                       {formatCurrency(getTotalExpenses())}
                     </p>
                   </div>
-                  <div className={`${darkMode ? 'bg-pink-900' : 'bg-pink-200'} p-2 sm:p-3 rounded-full`}>
+                  <div className={`${darkMode ? 'bg-pink-900/50' : 'bg-pink-200/50'} p-2 sm:p-3 rounded-full group-hover:rotate-12 transition-transform duration-300`}>
                     <TrendingDown className={`w-4 h-4 sm:w-6 sm:h-6 ${darkMode ? 'text-pink-400' : 'text-pink-700'}`} />
                   </div>
                 </div>
               </div>
 
-              <div className={`${darkMode ? 'bg-gray-800' : getNetProfit() >= 0 ? 'bg-gradient-to-br from-blue-100 to-cyan-100' : 'bg-gradient-to-br from-red-100 to-pink-100'} p-3 sm:p-6 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105`}>
+              <div className={`group ${darkMode ? 'bg-gray-800/80' : 'bg-white/80'} backdrop-blur-xl p-3 sm:p-6 rounded-2xl shadow-xl hover:shadow-2xl transition-all duration-500 hover:scale-105 border ${getNetProfit() >= 0 ? 'border-cyan-200/20' : 'border-red-200/20'}`}>
                 <div className="flex items-center justify-between">
                   <div>
                     <p className={`${darkMode ? (getNetProfit() >= 0 ? 'text-cyan-400' : 'text-red-400') : (getNetProfit() >= 0 ? 'text-cyan-600' : 'text-red-600')} font-medium flex items-center gap-1 sm:gap-2 text-xs sm:text-sm`}>
-                      <Target className="w-3 h-3 sm:w-4 sm:h-4" />
+                      <Target className="w-3 h-3 sm:w-4 sm:h-4 group-hover:animate-spin" />
                       {getNetProfit() >= 0 ? 'Lucro' : 'Falta Pagar'}
                     </p>
-                    <p className={`text-lg sm:text-2xl font-bold ${getNetProfit() >= 0 ? (darkMode ? 'text-cyan-300' : 'text-cyan-800') : 'text-red-600'}`}>
+                    <p className={`text-lg sm:text-2xl font-bold ${getNetProfit() >= 0 ? (darkMode ? 'text-cyan-300' : 'text-cyan-800') : 'text-red-600'} group-hover:scale-110 transition-transform duration-300`}>
                       {formatCurrency(Math.abs(getNetProfit()))}
                     </p>
                   </div>
-                  <div className={`${darkMode ? (getNetProfit() >= 0 ? 'bg-cyan-900' : 'bg-red-900') : (getNetProfit() >= 0 ? 'bg-cyan-200' : 'bg-red-200')} p-2 sm:p-3 rounded-full`}>
+                  <div className={`${darkMode ? (getNetProfit() >= 0 ? 'bg-cyan-900/50' : 'bg-red-900/50') : (getNetProfit() >= 0 ? 'bg-cyan-200/50' : 'bg-red-200/50')} p-2 sm:p-3 rounded-full group-hover:scale-110 transition-transform duration-300`}>
                     <DollarSign className={`w-4 h-4 sm:w-6 sm:h-6 ${darkMode ? (getNetProfit() >= 0 ? 'text-cyan-400' : 'text-red-400') : (getNetProfit() >= 0 ? 'text-cyan-700' : 'text-red-700')}`} />
                   </div>
                 </div>
               </div>
 
-              <div className={`${darkMode ? 'bg-gray-800' : 'bg-gradient-to-br from-purple-100 to-violet-100'} p-3 sm:p-6 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105`}>
+              <div className={`group ${darkMode ? 'bg-gray-800/80' : 'bg-white/80'} backdrop-blur-xl p-3 sm:p-6 rounded-2xl shadow-xl hover:shadow-2xl transition-all duration-500 hover:scale-105 border border-violet-200/20`}>
                 <div className="flex items-center justify-between">
                   <div>
                     <p className={`${darkMode ? 'text-violet-400' : 'text-violet-600'} font-medium flex items-center gap-1 sm:gap-2 text-xs sm:text-sm`}>
-                      <Ticket className="w-3 h-3 sm:w-4 sm:h-4" />
+                      <Ticket className="w-3 h-3 sm:w-4 sm:h-4 group-hover:animate-pulse" />
                       Ingressos
                     </p>
-                    <p className={`text-lg sm:text-2xl font-bold ${darkMode ? 'text-violet-300' : 'text-violet-800'}`}>
+                    <p className={`text-lg sm:text-2xl font-bold ${darkMode ? 'text-violet-300' : 'text-violet-800'} group-hover:scale-110 transition-transform duration-300`}>
                       {formatNumber(ticketInfo.ticketsSold)}
                     </p>
                   </div>
-                  <div className={`${darkMode ? 'bg-violet-900' : 'bg-violet-200'} p-2 sm:p-3 rounded-full`}>
+                  <div className={`${darkMode ? 'bg-violet-900/50' : 'bg-violet-200/50'} p-2 sm:p-3 rounded-full group-hover:rotate-12 transition-transform duration-300`}>
                     <Ticket className={`w-4 h-4 sm:w-6 sm:h-6 ${darkMode ? 'text-violet-400' : 'text-violet-700'}`} />
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Quick Actions - Mobile Optimized */}
-            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white/70'} backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-lg`}>
-              <h3 className={`text-lg sm:text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'} mb-3 sm:mb-4`}>Ações Rápidas</h3>
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-4">
-                <button
-                  onClick={() => setActiveTab('ingressos')}
-                  className="p-3 sm:p-4 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl hover:from-indigo-600 hover:to-purple-700 transition-all duration-300 hover:scale-105 shadow-lg flex flex-col items-center gap-1 sm:gap-2"
-                >
-                  <Ticket className="w-4 h-4 sm:w-6 sm:h-6" />
-                  <span className="text-xs sm:text-sm font-medium">Ingressos</span>
-                </button>
-                
-                <button
-                  onClick={() => setActiveTab('bar')}
-                  className="p-3 sm:p-4 bg-gradient-to-r from-orange-500 to-red-600 text-white rounded-xl hover:from-orange-600 hover:to-red-700 transition-all duration-300 hover:scale-105 shadow-lg flex flex-col items-center gap-1 sm:gap-2"
-                >
-                  <Coffee className="w-4 h-4 sm:w-6 sm:h-6" />
-                  <span className="text-xs sm:text-sm font-medium">Bar</span>
-                </button>
-                
-                <button
-                  onClick={() => setActiveTab('loja')}
-                  className="p-3 sm:p-4 bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-xl hover:from-purple-600 hover:to-pink-700 transition-all duration-300 hover:scale-105 shadow-lg flex flex-col items-center gap-1 sm:gap-2"
-                >
-                  <ShoppingCart className="w-4 h-4 sm:w-6 sm:h-6" />
-                  <span className="text-xs sm:text-sm font-medium">Loja</span>
-                </button>
-                
-                <button
-                  onClick={() => setActiveTab('relatorio')}
-                  className="p-3 sm:p-4 bg-gradient-to-r from-blue-500 to-cyan-600 text-white rounded-xl hover:from-blue-600 hover:to-cyan-700 transition-all duration-300 hover:scale-105 shadow-lg flex flex-col items-center gap-1 sm:gap-2"
-                >
-                  <FileText className="w-4 h-4 sm:w-6 sm:h-6" />
-                  <span className="text-xs sm:text-sm font-medium">Relatórios</span>
-                </button>
-                
-                <button
-                  onClick={exportToPDF}
-                  disabled={isExporting}
-                  className="p-3 sm:p-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl hover:from-green-600 hover:to-emerald-700 transition-all duration-300 hover:scale-105 shadow-lg flex flex-col items-center gap-1 sm:gap-2 disabled:opacity-50"
-                >
-                  {isExporting ? <RefreshCw className="w-4 h-4 sm:w-6 sm:h-6 animate-spin" /> : <Download className="w-4 h-4 sm:w-6 sm:h-6" />}
-                  <span className="text-xs sm:text-sm font-medium">Exportar</span>
-                </button>
+            {/* Enhanced Quick Actions */}
+            <div className={`${darkMode ? 'bg-gray-800/80' : 'bg-white/80'} backdrop-blur-xl rounded-2xl p-4 sm:p-6 shadow-xl border border-white/20`}>
+              <h3 className={`text-lg sm:text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'} mb-3 sm:mb-4 flex items-center gap-2`}>
+                <Zap className="w-5 h-5 text-yellow-500 animate-pulse" />
+                Ações Rápidas
+              </h3>
+              <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 sm:gap-4">
+                {[
+                  { tab: 'simulador', icon: LineChart, label: 'Simulador', gradient: 'from-cyan-500 to-blue-600' },
+                  { tab: 'ingressos', icon: Ticket, label: 'Ingressos', gradient: 'from-indigo-500 to-purple-600' },
+                  { tab: 'bar', icon: Coffee, label: 'Bar', gradient: 'from-orange-500 to-red-600' },
+                  { tab: 'loja', icon: ShoppingCart, label: 'Loja', gradient: 'from-purple-500 to-pink-600' },
+                  { tab: 'relatorio', icon: FileText, label: 'Relatórios', gradient: 'from-blue-500 to-cyan-600' },
+                  { action: 'export', icon: Download, label: 'Exportar', gradient: 'from-green-500 to-emerald-600' }
+                ].map((item, index) => (
+                  <button
+                    key={index}
+                    onClick={() => {
+                      if (item.action === 'export') {
+                        exportToPDF()
+                      } else {
+                        setActiveTab(item.tab as any)
+                      }
+                    }}
+                    disabled={item.action === 'export' && isExporting}
+                    className={`group p-3 sm:p-4 bg-gradient-to-r ${item.gradient} text-white rounded-xl hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl flex flex-col items-center gap-1 sm:gap-2 disabled:opacity-50`}
+                  >
+                    {item.action === 'export' && isExporting ? 
+                      <RefreshCw className="w-4 h-4 sm:w-6 sm:h-6 animate-spin" /> : 
+                      <item.icon className="w-4 h-4 sm:w-6 sm:h-6 group-hover:scale-110 transition-transform duration-300" />
+                    }
+                    <span className="text-xs sm:text-sm font-medium">{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Performance Metrics */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+              <div className={`${darkMode ? 'bg-gray-800/80' : 'bg-white/80'} backdrop-blur-xl rounded-2xl p-4 sm:p-6 shadow-xl border border-white/20`}>
+                <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-800'} mb-4 flex items-center gap-2`}>
+                  <Gauge className="w-5 h-5 text-blue-500" />
+                  Performance do Bar
+                </h3>
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <span className={`${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Receita</span>
+                    <span className="font-bold text-orange-600">{formatCurrency(getBarRevenue())}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className={`${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Margem</span>
+                    <span className="font-bold text-blue-600">{getBarMargin().toFixed(1)}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div 
+                      className="bg-gradient-to-r from-orange-500 to-red-600 h-2 rounded-full transition-all duration-1000"
+                      style={{ width: `${Math.min(getBarMargin(), 100)}%` }}
+                    ></div>
+                  </div>
+                </div>
+              </div>
+
+              <div className={`${darkMode ? 'bg-gray-800/80' : 'bg-white/80'} backdrop-blur-xl rounded-2xl p-4 sm:p-6 shadow-xl border border-white/20`}>
+                <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-800'} mb-4 flex items-center gap-2`}>
+                  <Crown className="w-5 h-5 text-purple-500" />
+                  Performance da Loja
+                </h3>
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <span className={`${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Receita</span>
+                    <span className="font-bold text-purple-600">{formatCurrency(getLojaRevenue())}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className={`${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Margem</span>
+                    <span className="font-bold text-blue-600">{getLojaMargin().toFixed(1)}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div 
+                      className="bg-gradient-to-r from-purple-500 to-pink-600 h-2 rounded-full transition-all duration-1000"
+                      style={{ width: `${Math.min(getLojaMargin(), 100)}%` }}
+                    ></div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* Ingressos Tab */}
-        {activeTab === 'ingressos' && (
-          <div className="space-y-4 sm:space-y-8">
-            {/* Ticket Info Card - Mobile Optimized */}
-            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white/70'} backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-lg`}>
-              <h3 className={`text-lg sm:text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'} mb-3 sm:mb-4 flex items-center gap-2`}>
-                <Ticket className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-600" />
-                Informações dos Ingressos
-              </h3>
-              
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 mb-4 sm:mb-6">
+        {/* Simulador Tab - Enhanced */}
+        {activeTab === 'simulador' && (
+          <div className="space-y-6">
+            {/* Enhanced Header do Simulador */}
+            <div className={`${darkMode ? 'bg-gray-800/80' : 'bg-gradient-to-r from-cyan-100/80 to-blue-100/80'} backdrop-blur-xl rounded-2xl p-6 shadow-xl border border-white/20`}>
+              <div className="flex items-center gap-4 mb-4">
+                <div className="p-3 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-full shadow-lg">
+                  <LineChart className="w-8 h-8 text-white" />
+                </div>
                 <div>
+                  <h2 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'} flex items-center gap-2`}>
+                    Simulador de Eventos
+                    <Gem className="w-6 h-6 text-purple-500 animate-pulse" />
+                  </h2>
+                  <p className={`${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                    Compare eventos passados e projete o sucesso do seu próximo evento com IA
+                  </p>
+                </div>
+              </div>
+              
+              {/* Enhanced Progress Steps */}
+              <div className="flex items-center justify-center gap-4 mb-6">
+                <div className={`flex items-center gap-2 px-4 py-2 rounded-full transition-all duration-300 ${
+                  simulatorStep === 'past' 
+                    ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg scale-105' 
+                    : simulatorStep === 'current' || simulatorStep === 'results'
+                    ? 'bg-green-100 text-green-600'
+                    : 'bg-gray-100 text-gray-400'
+                }`}>
+                  <History className="w-4 h-4" />
+                  <span className="text-sm font-medium">Evento Passado</span>
+                </div>
+                
+                <ArrowRight className="w-5 h-5 text-gray-400 animate-pulse" />
+                
+                <div className={`flex items-center gap-2 px-4 py-2 rounded-full transition-all duration-300 ${
+                  simulatorStep === 'current' 
+                    ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg scale-105' 
+                    : simulatorStep === 'results'
+                    ? 'bg-green-100 text-green-600'
+                    : 'bg-gray-100 text-gray-400'
+                }`}>
+                  <Calendar className="w-4 h-4" />
+                  <span className="text-sm font-medium">Evento Atual</span>
+                </div>
+                
+                <ArrowRight className="w-5 h-5 text-gray-400 animate-pulse" />
+                
+                <div className={`flex items-center gap-2 px-4 py-2 rounded-full transition-all duration-300 ${
+                  simulatorStep === 'results' 
+                    ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg scale-105' 
+                    : 'bg-gray-100 text-gray-400'
+                }`}>
+                  <Sparkles className="w-4 h-4" />
+                  <span className="text-sm font-medium">Resultados</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Simulador Steps */}
+            {simulatorStep === 'past' && (
+              <div className={`${darkMode ? 'bg-gray-800/80' : 'bg-white/80'} backdrop-blur-xl rounded-2xl p-6 shadow-xl border border-white/20`}>
+                <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'} mb-6 flex items-center gap-2`}>
+                  <History className="w-6 h-6 text-cyan-600" />
+                  Dados do Evento Passado
+                </h3>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="group">
+                    <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2`}>
+                      Nome do Evento
+                    </label>
+                    <input
+                      type="text"
+                      value={pastEventData.name}
+                      onChange={(e) => setPastEventData({ ...pastEventData, name: e.target.value })}
+                      className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-cyan-500 outline-none transition-all duration-300 group-hover:shadow-lg ${
+                        darkMode ? 'bg-gray-700/50 border-gray-600 text-white' : 'bg-white/50 border-gray-200'
+                      }`}
+                      placeholder="Ex: Festival de Verão 2023"
+                    />
+                  </div>
+                  
+                  <div className="group">
+                    <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2`}>
+                      Número de Participantes
+                    </label>
+                    <input
+                      type="number"
+                      value={pastEventData.attendees}
+                      onChange={(e) => setPastEventData({ ...pastEventData, attendees: parseInt(e.target.value) || 0 })}
+                      className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-cyan-500 outline-none transition-all duration-300 group-hover:shadow-lg ${
+                        darkMode ? 'bg-gray-700/50 border-gray-600 text-white' : 'bg-white/50 border-gray-200'
+                      }`}
+                      placeholder="Ex: 500"
+                    />
+                  </div>
+
+                  <div className="group">
+                    <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2`}>
+                      Receita Total
+                    </label>
+                    <input
+                      type="number"
+                      value={pastEventData.totalRevenue}
+                      onChange={(e) => setPastEventData({ ...pastEventData, totalRevenue: parseFloat(e.target.value) || 0 })}
+                      className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-cyan-500 outline-none transition-all duration-300 group-hover:shadow-lg ${
+                        darkMode ? 'bg-gray-700/50 border-gray-600 text-white' : 'bg-white/50 border-gray-200'
+                      }`}
+                      placeholder="Ex: 50000"
+                    />
+                  </div>
+
+                  <div className="group">
+                    <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2`}>
+                      Custo Total
+                    </label>
+                    <input
+                      type="number"
+                      value={pastEventData.totalCosts}
+                      onChange={(e) => setPastEventData({ ...pastEventData, totalCosts: parseFloat(e.target.value) || 0 })}
+                      className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-cyan-500 outline-none transition-all duration-300 group-hover:shadow-lg ${
+                        darkMode ? 'bg-gray-700/50 border-gray-600 text-white' : 'bg-white/50 border-gray-200'
+                      }`}
+                      placeholder="Ex: 30000"
+                    />
+                  </div>
+                </div>
+                
+                <div className="flex justify-end mt-6">
+                  <button
+                    onClick={() => {
+                      if (pastEventData.attendees > 0 && pastEventData.totalCosts > 0) {
+                        setPastEventData({ 
+                          ...pastEventData, 
+                          totalRevenue: pastEventData.ticketRevenue + pastEventData.barRevenue + pastEventData.lojaRevenue 
+                        })
+                        setSimulatorStep('current')
+                      } else {
+                        addNotification('warning', 'Dados Incompletos', 'Preencha pelo menos o número de participantes e custo total')
+                      }
+                    }}
+                    className="group px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-xl hover:from-cyan-600 hover:to-blue-700 transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl flex items-center gap-2"
+                  >
+                    Próximo: Evento Atual
+                    <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform duration-300" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {simulatorStep === 'current' && (
+              <div className={`${darkMode ? 'bg-gray-800/80' : 'bg-white/80'} backdrop-blur-xl rounded-2xl p-6 shadow-xl border border-white/20`}>
+                <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'} mb-6 flex items-center gap-2`}>
+                  <Calendar className="w-6 h-6 text-cyan-600" />
+                  Dados do Evento Atual
+                </h3>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="group">
+                    <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2`}>
+                      Nome do Evento
+                    </label>
+                    <input
+                      type="text"
+                      value={currentEventData.name}
+                      onChange={(e) => setCurrentEventData({ ...currentEventData, name: e.target.value })}
+                      className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-cyan-500 outline-none transition-all duration-300 group-hover:shadow-lg ${
+                        darkMode ? 'bg-gray-700/50 border-gray-600 text-white' : 'bg-white/50 border-gray-200'
+                      }`}
+                      placeholder="Ex: Festival de Verão 2024"
+                    />
+                  </div>
+                  
+                  <div className="group">
+                    <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2`}>
+                      Participantes Estimados
+                    </label>
+                    <input
+                      type="number"
+                      value={currentEventData.estimatedAttendees}
+                      onChange={(e) => setCurrentEventData({ ...currentEventData, estimatedAttendees: parseInt(e.target.value) || 0 })}
+                      className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-cyan-500 outline-none transition-all duration-300 group-hover:shadow-lg ${
+                        darkMode ? 'bg-gray-700/50 border-gray-600 text-white' : 'bg-white/50 border-gray-200'
+                      }`}
+                      placeholder="Ex: 600"
+                    />
+                  </div>
+
+                  <div className="group">
+                    <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2`}>
+                      Preço do Ingresso
+                    </label>
+                    <input
+                      type="number"
+                      value={currentEventData.ticketPrice}
+                      onChange={(e) => setCurrentEventData({ ...currentEventData, ticketPrice: parseFloat(e.target.value) || 0 })}
+                      className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-cyan-500 outline-none transition-all duration-300 group-hover:shadow-lg ${
+                        darkMode ? 'bg-gray-700/50 border-gray-600 text-white' : 'bg-white/50 border-gray-200'
+                      }`}
+                      placeholder="Ex: 80"
+                    />
+                  </div>
+
+                  <div className="group">
+                    <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2`}>
+                      Custo Total Estimado
+                    </label>
+                    <input
+                      type="number"
+                      value={currentEventData.totalCosts}
+                      onChange={(e) => setCurrentEventData({ ...currentEventData, totalCosts: parseFloat(e.target.value) || 0 })}
+                      className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-cyan-500 outline-none transition-all duration-300 group-hover:shadow-lg ${
+                        darkMode ? 'bg-gray-700/50 border-gray-600 text-white' : 'bg-white/50 border-gray-200'
+                      }`}
+                      placeholder="Ex: 35000"
+                    />
+                  </div>
+                </div>
+                
+                <div className="flex justify-between mt-6">
+                  <button
+                    onClick={() => setSimulatorStep('past')}
+                    className="group px-6 py-3 bg-gradient-to-r from-gray-500 to-gray-600 text-white rounded-xl hover:from-gray-600 hover:to-gray-700 transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl flex items-center gap-2"
+                  >
+                    <ArrowRight className="w-5 h-5 rotate-180 group-hover:-translate-x-1 transition-transform duration-300" />
+                    Voltar
+                  </button>
+                  <button
+                    onClick={calculateSimulation}
+                    className="group px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-xl hover:from-cyan-600 hover:to-blue-700 transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl flex items-center gap-2"
+                  >
+                    Calcular Simulação
+                    <Sparkles className="w-5 h-5 group-hover:scale-110 transition-transform duration-300" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {simulatorStep === 'results' && simulationResult && (
+              <div className="space-y-6">
+                {/* Resultados da Simulação */}
+                <div className={`${darkMode ? 'bg-gray-800/80' : 'bg-white/80'} backdrop-blur-xl rounded-2xl p-6 shadow-xl border border-white/20`}>
+                  <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'} mb-6 flex items-center gap-2`}>
+                    <Sparkles className="w-6 h-6 text-cyan-600" />
+                    Resultados da Simulação
+                  </h3>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                    <div className={`${darkMode ? 'bg-gradient-to-br from-green-900/50 to-emerald-900/50' : 'bg-gradient-to-br from-green-50 to-emerald-50'} p-4 rounded-xl border border-green-200/50`}>
+                      <h4 className="font-semibold text-green-600 mb-2">Ponto de Equilíbrio</h4>
+                      <p className="text-2xl font-bold text-green-700">{simulationResult.breakEvenTickets}</p>
+                      <p className="text-sm text-green-600">ingressos necessários</p>
+                    </div>
+                    
+                    <div className={`${darkMode ? 'bg-gradient-to-br from-blue-900/50 to-cyan-900/50' : 'bg-gradient-to-br from-blue-50 to-cyan-50'} p-4 rounded-xl border border-blue-200/50`}>
+                      <h4 className="font-semibold text-blue-600 mb-2">Receita Mínima</h4>
+                      <p className="text-2xl font-bold text-blue-700">{formatCurrency(simulationResult.breakEvenRevenue)}</p>
+                      <p className="text-sm text-blue-600">para cobrir custos</p>
+                    </div>
+                    
+                    <div className={`${darkMode ? 'bg-gradient-to-br from-purple-900/50 to-pink-900/50' : 'bg-gradient-to-br from-purple-50 to-pink-50'} p-4 rounded-xl border border-purple-200/50`}>
+                      <h4 className="font-semibold text-purple-600 mb-2">Projeção Realista</h4>
+                      <p className="text-2xl font-bold text-purple-700">{formatCurrency(simulationResult.profitProjections.realistic)}</p>
+                      <p className="text-sm text-purple-600">lucro esperado</p>
+                    </div>
+                  </div>
+
+                  {/* Projeções de Lucro */}
+                  <div className="mb-6">
+                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-800'} mb-4`}>Projeções de Lucro</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="text-center">
+                        <div className="text-orange-600 font-semibold">Conservadora</div>
+                        <div className="text-2xl font-bold text-orange-700">{formatCurrency(simulationResult.profitProjections.conservative)}</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-blue-600 font-semibold">Realista</div>
+                        <div className="text-2xl font-bold text-blue-700">{formatCurrency(simulationResult.profitProjections.realistic)}</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-green-600 font-semibold">Otimista</div>
+                        <div className="text-2xl font-bold text-green-700">{formatCurrency(simulationResult.profitProjections.optimistic)}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between">
+                    <button
+                      onClick={() => setSimulatorStep('current')}
+                      className="group px-6 py-3 bg-gradient-to-r from-gray-500 to-gray-600 text-white rounded-xl hover:from-gray-600 hover:to-gray-700 transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl flex items-center gap-2"
+                    >
+                      <ArrowRight className="w-5 h-5 rotate-180 group-hover:-translate-x-1 transition-transform duration-300" />
+                      Voltar
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSimulatorStep('past')
+                        setSimulationResult(null)
+                      }}
+                      className="group px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-xl hover:from-cyan-600 hover:to-blue-700 transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl flex items-center gap-2"
+                    >
+                      Nova Simulação
+                      <RefreshCw className="w-5 h-5 group-hover:rotate-180 transition-transform duration-300" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Ingressos Tab - CORRIGIDA */}
+        {activeTab === 'ingressos' && (
+          <div className="space-y-6">
+            <div className={`${darkMode ? 'bg-gray-800/80' : 'bg-white/80'} backdrop-blur-xl rounded-2xl p-6 shadow-xl border border-white/20`}>
+              <h2 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'} mb-6 flex items-center gap-2`}>
+                <Ticket className="w-8 h-8 text-indigo-600" />
+                Gestão de Ingressos
+              </h2>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div className="group">
                   <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2`}>
-                    Ticket Médio Atual
+                    Preço do Ingresso (R$)
                   </label>
                   <input
                     type="number"
                     value={ticketInfo.currentTicketPrice}
                     onChange={(e) => setTicketInfo({ ...ticketInfo, currentTicketPrice: parseFloat(e.target.value) || 0 })}
-                    className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm sm:text-base ${
-                      darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-200'
+                    className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all duration-300 group-hover:shadow-lg ${
+                      darkMode ? 'bg-gray-700/50 border-gray-600 text-white' : 'bg-white/50 border-gray-200'
                     }`}
-                    placeholder="50.00"
+                    placeholder="Ex: 80"
                   />
                 </div>
                 
-                <div>
+                <div className="group">
                   <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2`}>
                     Ingressos Vendidos
                   </label>
@@ -1286,991 +2049,817 @@ export default function EventControlPro() {
                     type="number"
                     value={ticketInfo.ticketsSold}
                     onChange={(e) => setTicketInfo({ ...ticketInfo, ticketsSold: parseInt(e.target.value) || 0 })}
-                    className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm sm:text-base ${
-                      darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-200'
+                    className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all duration-300 group-hover:shadow-lg ${
+                      darkMode ? 'bg-gray-700/50 border-gray-600 text-white' : 'bg-white/50 border-gray-200'
                     }`}
-                    placeholder="0"
+                    placeholder="Ex: 150"
                   />
                 </div>
                 
-                <div>
+                <div className="group">
                   <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2`}>
-                    Custo Total do Evento
+                    Custo Total do Evento (R$)
                   </label>
                   <input
                     type="number"
                     value={ticketInfo.eventTotalCost}
                     onChange={(e) => setTicketInfo({ ...ticketInfo, eventTotalCost: parseFloat(e.target.value) || 0 })}
-                    className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm sm:text-base ${
-                      darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-200'
+                    className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all duration-300 group-hover:shadow-lg ${
+                      darkMode ? 'bg-gray-700/50 border-gray-600 text-white' : 'bg-white/50 border-gray-200'
                     }`}
-                    placeholder="15000.00"
+                    placeholder="Ex: 25000"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-                <div className={`${darkMode ? 'bg-gray-700' : 'bg-green-50'} p-4 rounded-xl`}>
-                  <h4 className={`text-sm sm:text-lg font-semibold ${darkMode ? 'text-green-400' : 'text-green-600'} mb-2`}>Receita de Ingressos</h4>
-                  <p className={`text-xl sm:text-2xl font-bold ${darkMode ? 'text-green-300' : 'text-green-700'}`}>
-                    {formatCurrency(ticketInfo.currentTicketPrice * ticketInfo.ticketsSold)}
+              {/* Métricas de Ingressos */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div className={`${darkMode ? 'bg-gradient-to-br from-indigo-900/50 to-purple-900/50' : 'bg-gradient-to-br from-indigo-50 to-purple-50'} p-4 rounded-xl border border-indigo-200/50`}>
+                  <h4 className="font-semibold text-indigo-600 mb-2">Receita de Ingressos</h4>
+                  <p className="text-2xl font-bold text-indigo-700">{formatCurrency(ticketInfo.currentTicketPrice * ticketInfo.ticketsSold)}</p>
+                </div>
+                
+                <div className={`${darkMode ? 'bg-gradient-to-br from-green-900/50 to-emerald-900/50' : 'bg-gradient-to-br from-green-50 to-emerald-50'} p-4 rounded-xl border border-green-200/50`}>
+                  <h4 className="font-semibold text-green-600 mb-2">Ingressos para Quitar</h4>
+                  <p className="text-2xl font-bold text-green-700">
+                    {ticketInfo.currentTicketPrice > 0 ? Math.ceil(ticketInfo.eventTotalCost / ticketInfo.currentTicketPrice) : 0}
                   </p>
                 </div>
                 
-                <div className={`${darkMode ? 'bg-gray-700' : getAmountNeededToPay() > 0 ? 'bg-red-50' : 'bg-green-50'} p-4 rounded-xl`}>
-                  <h4 className={`text-sm sm:text-lg font-semibold ${darkMode ? (getAmountNeededToPay() > 0 ? 'text-red-400' : 'text-green-400') : (getAmountNeededToPay() > 0 ? 'text-red-600' : 'text-green-600')} mb-2`}>
-                    {getAmountNeededToPay() > 0 ? 'Falta para Pagar' : 'Evento Quitado'}
-                  </h4>
-                  <p className={`text-xl sm:text-2xl font-bold ${getAmountNeededToPay() > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                    {formatCurrency(getAmountNeededToPay())}
+                <div className={`${darkMode ? 'bg-gradient-to-br from-orange-900/50 to-red-900/50' : 'bg-gradient-to-br from-orange-50 to-red-50'} p-4 rounded-xl border border-orange-200/50`}>
+                  <h4 className="font-semibold text-orange-600 mb-2">Faltam Vender</h4>
+                  <p className="text-2xl font-bold text-orange-700">
+                    {Math.max(0, (ticketInfo.currentTicketPrice > 0 ? Math.ceil(ticketInfo.eventTotalCost / ticketInfo.currentTicketPrice) : 0) - ticketInfo.ticketsSold)}
                   </p>
+                </div>
+                
+                <div className={`${darkMode ? 'bg-gradient-to-br from-blue-900/50 to-cyan-900/50' : 'bg-gradient-to-br from-blue-50 to-cyan-50'} p-4 rounded-xl border border-blue-200/50`}>
+                  <h4 className="font-semibold text-blue-600 mb-2">% do Evento Pago</h4>
+                  <p className="text-2xl font-bold text-blue-700">
+                    {ticketInfo.eventTotalCost > 0 ? ((ticketInfo.currentTicketPrice * ticketInfo.ticketsSold) / ticketInfo.eventTotalCost * 100).toFixed(1) : 0}%
+                  </p>
+                </div>
+              </div>
+
+              {/* Barra de Progresso */}
+              <div className="mb-6">
+                <div className="flex justify-between items-center mb-2">
+                  <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Progresso do Evento</span>
+                  <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                    {ticketInfo.eventTotalCost > 0 ? ((ticketInfo.currentTicketPrice * ticketInfo.ticketsSold) / ticketInfo.eventTotalCost * 100).toFixed(1) : 0}%
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-4">
+                  <div 
+                    className="bg-gradient-to-r from-indigo-500 to-purple-600 h-4 rounded-full transition-all duration-1000"
+                    style={{ 
+                      width: `${Math.min(ticketInfo.eventTotalCost > 0 ? (ticketInfo.currentTicketPrice * ticketInfo.ticketsSold) / ticketInfo.eventTotalCost * 100 : 0, 100)}%` 
+                    }}
+                  ></div>
+                </div>
+              </div>
+
+              {/* Simulação de Cenários */}
+              <div className={`${darkMode ? 'bg-gray-700/50' : 'bg-gray-50/50'} p-4 rounded-xl`}>
+                <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-800'} mb-4`}>Simulação de Cenários</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="text-center">
+                    <div className="text-orange-600 font-semibold">Cenário Conservador (70%)</div>
+                    <div className="text-xl font-bold text-orange-700">
+                      {formatCurrency((ticketInfo.currentTicketPrice * ticketInfo.ticketsSold * 1.7) - ticketInfo.eventTotalCost)}
+                    </div>
+                    <div className="text-sm text-orange-600">lucro estimado</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-blue-600 font-semibold">Cenário Realista (100%)</div>
+                    <div className="text-xl font-bold text-blue-700">
+                      {formatCurrency((ticketInfo.currentTicketPrice * ticketInfo.ticketsSold * 2) - ticketInfo.eventTotalCost)}
+                    </div>
+                    <div className="text-sm text-blue-600">lucro estimado</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-green-600 font-semibold">Cenário Otimista (150%)</div>
+                    <div className="text-xl font-bold text-green-700">
+                      {formatCurrency((ticketInfo.currentTicketPrice * ticketInfo.ticketsSold * 2.5) - ticketInfo.eventTotalCost)}
+                    </div>
+                    <div className="text-sm text-green-600">lucro estimado</div>
+                  </div>
                 </div>
               </div>
             </div>
+          </div>
+        )}
 
-            {/* Strategy Slider - Mobile Optimized */}
-            {getAmountNeededToPay() > 0 && (
-              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white/70'} backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-lg`}>
-                <h3 className={`text-lg sm:text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'} mb-4`}>Estratégia de Vendas</h3>
+        {/* Bar Tab - CORRIGIDA */}
+        {activeTab === 'bar' && (
+          <div className="space-y-6">
+            <div className={`${darkMode ? 'bg-gray-800/80' : 'bg-white/80'} backdrop-blur-xl rounded-2xl p-6 shadow-xl border border-white/20`}>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'} flex items-center gap-2`}>
+                  <Coffee className="w-8 h-8 text-orange-600" />
+                  Gestão do Bar
+                </h2>
+                <button
+                  onClick={() => setShowCustomProductForm(true)}
+                  className="group px-4 py-2 bg-gradient-to-r from-orange-500 to-red-600 text-white rounded-xl hover:from-orange-600 hover:to-red-700 transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl flex items-center gap-2"
+                >
+                  <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" />
+                  Adicionar Produto
+                </button>
+              </div>
+
+              {/* Resumo do Bar */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div className={`${darkMode ? 'bg-gradient-to-br from-orange-900/50 to-red-900/50' : 'bg-gradient-to-br from-orange-50 to-red-50'} p-4 rounded-xl border border-orange-200/50`}>
+                  <h4 className="font-semibold text-orange-600 mb-2">Receita do Bar</h4>
+                  <p className="text-2xl font-bold text-orange-700">{formatCurrency(getBarRevenue())}</p>
+                </div>
                 
-                <div className="mb-6">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className={`text-xs sm:text-sm font-medium ${darkMode ? 'text-orange-400' : 'text-orange-600'}`}>Foco no Bar</span>
-                    <span className={`text-xs sm:text-sm font-medium ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>Foco na Loja</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={barLojaSlider}
-                    onChange={(e) => setBarLojaSlider(parseInt(e.target.value))}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
-                  />
-                  <div className="text-center mt-2">
-                    <span className={`text-xs sm:text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                      {barLojaSlider < 25 ? 'Principalmente Bar' : 
-                       barLojaSlider > 75 ? 'Principalmente Loja' : 'Estratégia Mista'}
-                    </span>
-                  </div>
+                <div className={`${darkMode ? 'bg-gradient-to-br from-pink-900/50 to-red-900/50' : 'bg-gradient-to-br from-pink-50 to-red-50'} p-4 rounded-xl border border-pink-200/50`}>
+                  <h4 className="font-semibold text-pink-600 mb-2">Investimento</h4>
+                  <p className="text-2xl font-bold text-pink-700">{formatCurrency(getBarInvestment())}</p>
                 </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-6">
-                  <div className={`${darkMode ? 'bg-gray-700' : 'bg-orange-50'} p-3 sm:p-4 rounded-xl text-center`}>
-                    <h4 className={`text-xs sm:text-sm font-medium ${darkMode ? 'text-orange-400' : 'text-orange-600'} mb-2`}>Só com Bar</h4>
-                    <p className={`text-lg sm:text-xl font-bold ${darkMode ? 'text-orange-300' : 'text-orange-700'}`}>
-                      {formatNumber(getProductsNeededToPayEvent().bar)} produtos
-                    </p>
-                  </div>
-                  
-                  <div className={`${darkMode ? 'bg-gray-700' : 'bg-blue-50'} p-3 sm:p-4 rounded-xl text-center`}>
-                    <h4 className={`text-xs sm:text-sm font-medium ${darkMode ? 'text-blue-400' : 'text-blue-600'} mb-2`}>Estratégia Mista</h4>
-                    <p className={`text-lg sm:text-xl font-bold ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>
-                      {formatNumber(getProductsNeededToPayEvent().mixed)} produtos
-                    </p>
-                  </div>
-                  
-                  <div className={`${darkMode ? 'bg-gray-700' : 'bg-purple-50'} p-3 sm:p-4 rounded-xl text-center`}>
-                    <h4 className={`text-xs sm:text-sm font-medium ${darkMode ? 'text-purple-400' : 'text-purple-600'} mb-2`}>Só com Loja</h4>
-                    <p className={`text-lg sm:text-xl font-bold ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>
-                      {formatNumber(getProductsNeededToPayEvent().loja)} produtos
-                    </p>
-                  </div>
+                
+                <div className={`${darkMode ? 'bg-gradient-to-br from-green-900/50 to-emerald-900/50' : 'bg-gradient-to-br from-green-50 to-emerald-50'} p-4 rounded-xl border border-green-200/50`}>
+                  <h4 className="font-semibold text-green-600 mb-2">Lucro</h4>
+                  <p className="text-2xl font-bold text-green-700">{formatCurrency(getBarProfit())}</p>
                 </div>
+                
+                <div className={`${darkMode ? 'bg-gradient-to-br from-blue-900/50 to-cyan-900/50' : 'bg-gradient-to-br from-blue-50 to-cyan-50'} p-4 rounded-xl border border-blue-200/50`}>
+                  <h4 className="font-semibold text-blue-600 mb-2">Margem</h4>
+                  <p className="text-2xl font-bold text-blue-700">{getBarMargin().toFixed(1)}%</p>
+                </div>
+              </div>
 
-                {/* Detailed Product Strategy - Mobile Optimized */}
-                <div className={`${darkMode ? 'bg-gray-700' : 'bg-gray-50'} p-3 sm:p-4 rounded-xl`}>
-                  <h4 className={`text-sm sm:text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-800'} mb-4`}>
-                    Produtos Necessários - {barLojaSlider < 25 ? 'Foco no Bar' : barLojaSlider > 75 ? 'Foco na Loja' : 'Estratégia Mista'}
-                  </h4>
-                  <div className="grid grid-cols-1 gap-3 sm:gap-4">
-                    {getProductsNeededBySlider().map((product) => (
-                      <div key={product.id} className={`${darkMode ? 'bg-gray-600' : 'bg-white'} p-3 rounded-lg`}>
-                        <div className="flex justify-between items-center">
-                          <div>
-                            <h5 className={`font-medium text-sm sm:text-base ${darkMode ? 'text-white' : 'text-gray-800'}`}>{product.name}</h5>
-                            <p className={`text-xs sm:text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                              {product.category === 'bar' ? '🍺' : '🛍️'} {product.category.toUpperCase()}
-                            </p>
+              {/* Lista de Produtos do Bar */}
+              <div className="space-y-4">
+                <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Produtos do Bar</h3>
+                {products.filter(p => p.category === 'bar').length === 0 ? (
+                  <div className={`${darkMode ? 'bg-gray-700/50' : 'bg-gray-50/50'} p-8 rounded-xl text-center`}>
+                    <Coffee className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                    <p className={`${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-4`}>
+                      Nenhum produto do bar cadastrado ainda
+                    </p>
+                    <button
+                      onClick={() => setShowCustomProductForm(true)}
+                      className="px-6 py-3 bg-gradient-to-r from-orange-500 to-red-600 text-white rounded-xl hover:from-orange-600 hover:to-red-700 transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl"
+                    >
+                      Adicionar Primeiro Produto
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {products.filter(p => p.category === 'bar').map((product) => (
+                      <div key={product.id} className={`${darkMode ? 'bg-gray-700/50' : 'bg-white/50'} p-4 rounded-xl border border-orange-200/50 hover:shadow-lg transition-all duration-300`}>
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{product.name}</h4>
+                          <button
+                            onClick={() => deleteProduct(product.id)}
+                            className="p-1 text-red-500 hover:bg-red-100 rounded-lg transition-colors duration-200"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                        
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <span className={`${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Preço de Venda:</span>
+                            <span className="font-medium text-orange-600">{formatCurrency(product.salePrice)}</span>
                           </div>
-                          <div className="text-right">
-                            <p className={`font-bold text-sm sm:text-base ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-                              {formatNumber(product.neededQuantity)} unidades
-                            </p>
-                            <p className={`text-xs sm:text-sm ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
-                              {formatCurrency(product.neededRevenue)}
-                            </p>
+                          <div className="flex justify-between">
+                            <span className={`${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Estoque:</span>
+                            <span className="font-medium">{product.quantity} unidades</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className={`${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Vendidos:</span>
+                            <span className="font-medium text-green-600">{product.sold} unidades</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className={`${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Receita:</span>
+                            <span className="font-medium text-blue-600">{formatCurrency(product.sold * product.salePrice)}</span>
+                          </div>
+                        </div>
+
+                        {/* Controles de Venda */}
+                        <div className="mt-4 space-y-2">
+                          <div>
+                            <label className={`block text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-1`}>
+                              Quantidade Vendida
+                            </label>
+                            <input
+                              type="number"
+                              value={product.sold}
+                              onChange={(e) => updateProductSale(product.id, parseInt(e.target.value) || 0)}
+                              className={`w-full p-2 text-sm border rounded-lg focus:ring-2 focus:ring-orange-500 outline-none ${
+                                darkMode ? 'bg-gray-600/50 border-gray-500 text-white' : 'bg-white/50 border-gray-200'
+                              }`}
+                              max={product.quantity}
+                            />
+                          </div>
+                          
+                          {product.type === 'package' && (
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className={`block text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-1`}>
+                                  Pacotes Devolvidos
+                                </label>
+                                <input
+                                  type="number"
+                                  value={product.returnedPackages || 0}
+                                  onChange={(e) => updateProductReturns(product.id, parseInt(e.target.value) || 0, product.remainingUnits || 0)}
+                                  className={`w-full p-2 text-sm border rounded-lg focus:ring-2 focus:ring-orange-500 outline-none ${
+                                    darkMode ? 'bg-gray-600/50 border-gray-500 text-white' : 'bg-white/50 border-gray-200'
+                                  }`}
+                                  max={product.packageQuantity}
+                                />
+                              </div>
+                              <div>
+                                <label className={`block text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-1`}>
+                                  Unidades Restantes
+                                </label>
+                                <input
+                                  type="number"
+                                  value={product.remainingUnits || 0}
+                                  onChange={(e) => updateProductReturns(product.id, product.returnedPackages || 0, parseInt(e.target.value) || 0)}
+                                  className={`w-full p-2 text-sm border rounded-lg focus:ring-2 focus:ring-orange-500 outline-none ${
+                                    darkMode ? 'bg-gray-600/50 border-gray-500 text-white' : 'bg-white/50 border-gray-200'
+                                  }`}
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Loja Tab - CORRIGIDA */}
+        {activeTab === 'loja' && (
+          <div className="space-y-6">
+            <div className={`${darkMode ? 'bg-gray-800/80' : 'bg-white/80'} backdrop-blur-xl rounded-2xl p-6 shadow-xl border border-white/20`}>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'} flex items-center gap-2`}>
+                  <ShoppingCart className="w-8 h-8 text-purple-600" />
+                  Gestão da Loja
+                </h2>
+                <button
+                  onClick={() => setShowCustomProductForm(true)}
+                  className="group px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-xl hover:from-purple-600 hover:to-pink-700 transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl flex items-center gap-2"
+                >
+                  <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" />
+                  Adicionar Produto
+                </button>
+              </div>
+
+              {/* Resumo da Loja */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div className={`${darkMode ? 'bg-gradient-to-br from-purple-900/50 to-pink-900/50' : 'bg-gradient-to-br from-purple-50 to-pink-50'} p-4 rounded-xl border border-purple-200/50`}>
+                  <h4 className="font-semibold text-purple-600 mb-2">Receita da Loja</h4>
+                  <p className="text-2xl font-bold text-purple-700">{formatCurrency(getLojaRevenue())}</p>
+                </div>
+                
+                <div className={`${darkMode ? 'bg-gradient-to-br from-pink-900/50 to-red-900/50' : 'bg-gradient-to-br from-pink-50 to-red-50'} p-4 rounded-xl border border-pink-200/50`}>
+                  <h4 className="font-semibold text-pink-600 mb-2">Investimento</h4>
+                  <p className="text-2xl font-bold text-pink-700">{formatCurrency(getLojaInvestment())}</p>
+                </div>
+                
+                <div className={`${darkMode ? 'bg-gradient-to-br from-green-900/50 to-emerald-900/50' : 'bg-gradient-to-br from-green-50 to-emerald-50'} p-4 rounded-xl border border-green-200/50`}>
+                  <h4 className="font-semibold text-green-600 mb-2">Lucro</h4>
+                  <p className="text-2xl font-bold text-green-700">{formatCurrency(getLojaProfit())}</p>
+                </div>
+                
+                <div className={`${darkMode ? 'bg-gradient-to-br from-blue-900/50 to-cyan-900/50' : 'bg-gradient-to-br from-blue-50 to-cyan-50'} p-4 rounded-xl border border-blue-200/50`}>
+                  <h4 className="font-semibold text-blue-600 mb-2">Margem</h4>
+                  <p className="text-2xl font-bold text-blue-700">{getLojaMargin().toFixed(1)}%</p>
+                </div>
+              </div>
+
+              {/* Lista de Produtos da Loja */}
+              <div className="space-y-4">
+                <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Produtos da Loja</h3>
+                {products.filter(p => p.category === 'loja').length === 0 ? (
+                  <div className={`${darkMode ? 'bg-gray-700/50' : 'bg-gray-50/50'} p-8 rounded-xl text-center`}>
+                    <ShoppingCart className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                    <p className={`${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-4`}>
+                      Nenhum produto da loja cadastrado ainda
+                    </p>
+                    <button
+                      onClick={() => setShowCustomProductForm(true)}
+                      className="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-xl hover:from-purple-600 hover:to-pink-700 transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl"
+                    >
+                      Adicionar Primeiro Produto
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {products.filter(p => p.category === 'loja').map((product) => (
+                      <div key={product.id} className={`${darkMode ? 'bg-gray-700/50' : 'bg-white/50'} p-4 rounded-xl border border-purple-200/50 hover:shadow-lg transition-all duration-300`}>
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{product.name}</h4>
+                          <button
+                            onClick={() => deleteProduct(product.id)}
+                            className="p-1 text-red-500 hover:bg-red-100 rounded-lg transition-colors duration-200"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                        
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <span className={`${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Preço de Venda:</span>
+                            <span className="font-medium text-purple-600">{formatCurrency(product.salePrice)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className={`${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Estoque:</span>
+                            <span className="font-medium">{product.quantity} unidades</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className={`${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Vendidos:</span>
+                            <span className="font-medium text-green-600">{product.sold} unidades</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className={`${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Receita:</span>
+                            <span className="font-medium text-blue-600">{formatCurrency(product.sold * product.salePrice)}</span>
+                          </div>
+                        </div>
+
+                        {/* Controles de Venda */}
+                        <div className="mt-4 space-y-2">
+                          <div>
+                            <label className={`block text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-1`}>
+                              Quantidade Vendida
+                            </label>
+                            <input
+                              type="number"
+                              value={product.sold}
+                              onChange={(e) => updateProductSale(product.id, parseInt(e.target.value) || 0)}
+                              className={`w-full p-2 text-sm border rounded-lg focus:ring-2 focus:ring-purple-500 outline-none ${
+                                darkMode ? 'bg-gray-600/50 border-gray-500 text-white' : 'bg-white/50 border-gray-200'
+                              }`}
+                              max={product.quantity}
+                            />
+                          </div>
+                          
+                          <div>
+                            <label className={`block text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-1`}>
+                              Produtos Devolvidos
+                            </label>
+                            <input
+                              type="number"
+                              value={product.returnedPackages || 0}
+                              onChange={(e) => updateProductReturns(product.id, parseInt(e.target.value) || 0, 0)}
+                              className={`w-full p-2 text-sm border rounded-lg focus:ring-2 focus:ring-purple-500 outline-none ${
+                                darkMode ? 'bg-gray-600/50 border-gray-500 text-white' : 'bg-white/50 border-gray-200'
+                              }`}
+                              max={product.packageQuantity}
+                            />
                           </div>
                         </div>
                       </div>
                     ))}
                   </div>
-                  
-                  <div className="mt-4 pt-4 border-t border-gray-300">
-                    <div className="flex justify-between items-center">
-                      <span className={`font-semibold text-sm sm:text-base ${darkMode ? 'text-white' : 'text-gray-800'}`}>Total Necessário:</span>
-                      <div className="text-right">
-                        <p className={`text-base sm:text-lg font-bold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
-                          {formatCurrency(getProductsNeededBySlider().reduce((sum, p) => sum + p.neededRevenue, 0))}
-                        </p>
-                        <p className={`text-xs sm:text-sm ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
-                          Lucro: {formatCurrency(getProductsNeededBySlider().reduce((sum, p) => sum + p.neededProfit, 0))}
-                        </p>
-                      </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Relatório Tab - CORRIGIDA */}
+        {activeTab === 'relatorio' && (
+          <div className="space-y-6">
+            <div className={`${darkMode ? 'bg-gray-800/80' : 'bg-white/80'} backdrop-blur-xl rounded-2xl p-6 shadow-xl border border-white/20`}>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'} flex items-center gap-2`}>
+                  <FileText className="w-8 h-8 text-emerald-600" />
+                  Relatório Financeiro
+                </h2>
+                <button
+                  onClick={exportToPDF}
+                  disabled={isExporting}
+                  className="group px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl hover:from-emerald-600 hover:to-teal-700 transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl flex items-center gap-2 disabled:opacity-50"
+                >
+                  {isExporting ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Download className="w-4 h-4 group-hover:translate-y-1 transition-transform duration-300" />
+                  )}
+                  {isExporting ? 'Exportando...' : 'Exportar Relatório'}
+                </button>
+              </div>
+
+              {/* Resumo Financeiro Geral */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+                <div className={`${darkMode ? 'bg-gradient-to-br from-green-900/50 to-emerald-900/50' : 'bg-gradient-to-br from-green-50 to-emerald-50'} p-4 rounded-xl border border-green-200/50`}>
+                  <h4 className="font-semibold text-green-600 mb-2">Receita Total</h4>
+                  <p className="text-2xl font-bold text-green-700">{formatCurrency(getTotalRevenue())}</p>
+                  <p className="text-sm text-green-600">Ingressos + Bar + Loja</p>
+                </div>
+                
+                <div className={`${darkMode ? 'bg-gradient-to-br from-red-900/50 to-pink-900/50' : 'bg-gradient-to-br from-red-50 to-pink-50'} p-4 rounded-xl border border-red-200/50`}>
+                  <h4 className="font-semibold text-red-600 mb-2">Investimento Total</h4>
+                  <p className="text-2xl font-bold text-red-700">{formatCurrency(getTotalExpenses())}</p>
+                  <p className="text-sm text-red-600">Produtos + Despesas + Evento</p>
+                </div>
+                
+                <div className={`${darkMode ? 'bg-gradient-to-br from-blue-900/50 to-cyan-900/50' : 'bg-gradient-to-br from-blue-50 to-cyan-50'} p-4 rounded-xl border ${getNetProfit() >= 0 ? 'border-blue-200/50' : 'border-red-200/50'}`}>
+                  <h4 className={`font-semibold mb-2 ${getNetProfit() >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                    {getNetProfit() >= 0 ? 'Lucro Líquido' : 'Prejuízo'}
+                  </h4>
+                  <p className={`text-2xl font-bold ${getNetProfit() >= 0 ? 'text-blue-700' : 'text-red-700'}`}>
+                    {formatCurrency(Math.abs(getNetProfit()))}
+                  </p>
+                  <p className={`text-sm ${getNetProfit() >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                    {getNetProfit() >= 0 ? 'Evento lucrativo' : 'Falta arrecadar'}
+                  </p>
+                </div>
+                
+                <div className={`${darkMode ? 'bg-gradient-to-br from-purple-900/50 to-indigo-900/50' : 'bg-gradient-to-br from-purple-50 to-indigo-50'} p-4 rounded-xl border border-purple-200/50`}>
+                  <h4 className="font-semibold text-purple-600 mb-2">Margem Geral</h4>
+                  <p className="text-2xl font-bold text-purple-700">
+                    {getTotalRevenue() > 0 ? ((getNetProfit() / getTotalRevenue()) * 100).toFixed(1) : 0}%
+                  </p>
+                  <p className="text-sm text-purple-600">Eficiência do evento</p>
+                </div>
+              </div>
+
+              {/* Detalhamento por Categoria */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                {/* Bar */}
+                <div className={`${darkMode ? 'bg-gray-700/50' : 'bg-white/50'} p-6 rounded-xl border border-orange-200/50`}>
+                  <h3 className="text-lg font-semibold text-orange-600 mb-4 flex items-center gap-2">
+                    <Coffee className="w-5 h-5" />
+                    Performance do Bar
+                  </h3>
+                  <div className="space-y-3">
+                    <div className="flex justify-between">
+                      <span className={`${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Receita Bruta:</span>
+                      <span className="font-semibold text-orange-600">{formatCurrency(getBarRevenue())}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className={`${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Investimento:</span>
+                      <span className="font-semibold text-red-600">{formatCurrency(getBarInvestment())}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className={`${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Lucro Líquido:</span>
+                      <span className={`font-semibold ${getBarProfit() >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {formatCurrency(getBarProfit())}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className={`${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Margem:</span>
+                      <span className="font-semibold text-blue-600">{getBarMargin().toFixed(1)}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                      <div 
+                        className="bg-gradient-to-r from-orange-500 to-red-600 h-2 rounded-full transition-all duration-1000"
+                        style={{ width: `${Math.min(Math.max(getBarMargin(), 0), 100)}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Loja */}
+                <div className={`${darkMode ? 'bg-gray-700/50' : 'bg-white/50'} p-6 rounded-xl border border-purple-200/50`}>
+                  <h3 className="text-lg font-semibold text-purple-600 mb-4 flex items-center gap-2">
+                    <ShoppingCart className="w-5 h-5" />
+                    Performance da Loja
+                  </h3>
+                  <div className="space-y-3">
+                    <div className="flex justify-between">
+                      <span className={`${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Receita Bruta:</span>
+                      <span className="font-semibold text-purple-600">{formatCurrency(getLojaRevenue())}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className={`${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Investimento:</span>
+                      <span className="font-semibold text-red-600">{formatCurrency(getLojaInvestment())}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className={`${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Lucro Líquido:</span>
+                      <span className={`font-semibold ${getLojaProfit() >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {formatCurrency(getLojaProfit())}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className={`${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Margem:</span>
+                      <span className="font-semibold text-blue-600">{getLojaMargin().toFixed(1)}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                      <div 
+                        className="bg-gradient-to-r from-purple-500 to-pink-600 h-2 rounded-full transition-all duration-1000"
+                        style={{ width: `${Math.min(Math.max(getLojaMargin(), 0), 100)}%` }}
+                      ></div>
                     </div>
                   </div>
                 </div>
               </div>
-            )}
 
-            {/* Success Message */}
-            {getAmountNeededToPay() <= 0 && (
-              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white/70'} backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-lg text-center`}>
-                <div className="text-4xl sm:text-6xl mb-4">🎉</div>
-                <h3 className={`text-xl sm:text-2xl font-bold ${darkMode ? 'text-green-400' : 'text-green-600'} mb-2`}>
-                  Parabéns! Evento Quitado!
+              {/* Detalhamento de Ingressos */}
+              <div className={`${darkMode ? 'bg-gray-700/50' : 'bg-white/50'} p-6 rounded-xl border border-indigo-200/50 mb-6`}>
+                <h3 className="text-lg font-semibold text-indigo-600 mb-4 flex items-center gap-2">
+                  <Ticket className="w-5 h-5" />
+                  Performance dos Ingressos
                 </h3>
-                <p className={`text-sm sm:text-lg ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                  Você já arrecadou o suficiente para cobrir todos os custos do evento.
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Bar Tab - Mobile Optimized */}
-        {activeTab === 'bar' && (
-          <div className="space-y-4 sm:space-y-8">
-            {/* Bar Investment Card */}
-            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white/70'} backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-lg`}>
-              <h3 className={`text-lg sm:text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'} mb-3 sm:mb-4 flex items-center gap-2`}>
-                <Coffee className="w-5 h-5 sm:w-6 sm:h-6 text-orange-600" />
-                Total de Investimento no Bar
-              </h3>
-              <div className="text-2xl sm:text-3xl font-bold text-orange-600">
-                {formatCurrency(getBarInvestment())}
-              </div>
-              <div className="mt-2 text-base sm:text-lg text-green-600 font-semibold">
-                Receita Bruta Total: {formatCurrency(getBarGrossRevenue())}
-              </div>
-            </div>
-
-            {/* Products Management - Mobile Optimized */}
-            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white/70'} backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-lg`}>
-              <h3 className={`text-lg sm:text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'} mb-4`}>Produtos do Bar</h3>
-              
-              {/* Add Product Buttons - Mobile Optimized */}
-              <div className="grid grid-cols-1 gap-3 sm:gap-4 mb-6">
-                <button
-                  onClick={() => {
-                    setNewProduct({ ...newProduct, category: 'bar', type: 'package' })
-                    setShowCustomProductForm(true)
-                  }}
-                  className="p-3 sm:p-4 bg-gradient-to-r from-orange-500 to-red-600 text-white rounded-xl hover:from-orange-600 hover:to-red-700 transition-all duration-300 hover:scale-105 shadow-lg flex items-center justify-center gap-2"
-                >
-                  <Package className="w-4 h-4 sm:w-5 sm:h-5" />
-                  Adicionar Produtos por Pacote
-                </button>
-                
-                <button
-                  onClick={() => {
-                    setNewProduct({ ...newProduct, category: 'bar', type: 'unit' })
-                    setShowCustomProductForm(true)
-                  }}
-                  className="p-3 sm:p-4 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl hover:from-blue-600 hover:to-indigo-700 transition-all duration-300 hover:scale-105 shadow-lg flex items-center justify-center gap-2"
-                >
-                  <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
-                  Adicionar Produtos por Unidade
-                </button>
-              </div>
-
-              {/* Custom Product Form - Mobile Optimized */}
-              {showCustomProductForm && (
-                <div className={`${darkMode ? 'bg-gray-700' : 'bg-gray-50'} p-3 sm:p-4 rounded-xl mb-6`}>
-                  <h4 className={`text-base sm:text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-800'} mb-4`}>
-                    {newProduct.type === 'package' ? 'Produto por Pacote' : 'Produto Unitário'}
-                  </h4>
-                  
-                  <div className="grid grid-cols-1 gap-3 sm:gap-4 mb-4">
-                    <div>
-                      <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2`}>
-                        Nome do Produto
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="Ex: Cerveja Artesanal"
-                        value={newProduct.name}
-                        onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })}
-                        className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-orange-500 outline-none text-sm sm:text-base ${
-                          darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-200'
-                        }`}
-                      />
-                    </div>
-                    
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2`}>
-                          Custo (por unidade)
-                        </label>
-                        <input
-                          type="number"
-                          placeholder="3.50"
-                          value={newProduct.purchasePrice}
-                          onChange={(e) => setNewProduct({ ...newProduct, purchasePrice: e.target.value })}
-                          className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-orange-500 outline-none text-sm sm:text-base ${
-                            darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-200'
-                          }`}
-                        />
-                      </div>
-                      
-                      <div>
-                        <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2`}>
-                          Valor de Venda (por unidade)
-                        </label>
-                        <input
-                          type="number"
-                          placeholder="8.00"
-                          value={newProduct.salePrice}
-                          onChange={(e) => setNewProduct({ ...newProduct, salePrice: e.target.value })}
-                          className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-orange-500 outline-none text-sm sm:text-base ${
-                            darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-200'
-                          }`}
-                        />
-                      </div>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="text-center">
+                    <div className="text-indigo-600 font-semibold">Preço Unitário</div>
+                    <div className="text-xl font-bold text-indigo-700">{formatCurrency(ticketInfo.currentTicketPrice)}</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-indigo-600 font-semibold">Ingressos Vendidos</div>
+                    <div className="text-xl font-bold text-indigo-700">{formatNumber(ticketInfo.ticketsSold)}</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-indigo-600 font-semibold">Receita de Ingressos</div>
+                    <div className="text-xl font-bold text-indigo-700">{formatCurrency(ticketInfo.currentTicketPrice * ticketInfo.ticketsSold)}</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-indigo-600 font-semibold">% do Evento Pago</div>
+                    <div className="text-xl font-bold text-indigo-700">
+                      {ticketInfo.eventTotalCost > 0 ? ((ticketInfo.currentTicketPrice * ticketInfo.ticketsSold) / ticketInfo.eventTotalCost * 100).toFixed(1) : 0}%
                     </div>
                   </div>
-                  
-                  {newProduct.type === 'package' ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-4">
-                      <div>
-                        <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2`}>
-                          Valor do Pacote
-                        </label>
-                        <input
-                          type="number"
-                          placeholder="84.00"
-                          value={newProduct.packagePrice}
-                          onChange={(e) => setNewProduct({ ...newProduct, packagePrice: e.target.value })}
-                          className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-orange-500 outline-none text-sm sm:text-base ${
-                            darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-200'
-                          }`}
-                        />
+                </div>
+              </div>
+
+              {/* Despesas por Categoria */}
+              <div className={`${darkMode ? 'bg-gray-700/50' : 'bg-white/50'} p-6 rounded-xl border border-gray-200/50`}>
+                <h3 className="text-lg font-semibold text-gray-600 mb-4 flex items-center gap-2">
+                  <Receipt className="w-5 h-5" />
+                  Despesas por Categoria
+                </h3>
+                <div className="space-y-3">
+                  {expenseCategories.map((category) => {
+                    const categoryTotal = category.items.reduce((sum, item) => sum + item.amount, 0)
+                    if (categoryTotal === 0) return null
+                    
+                    return (
+                      <div key={category.id} className="flex justify-between items-center">
+                        <span className={`${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{category.name}:</span>
+                        <span className="font-semibold text-red-600">{formatCurrency(categoryTotal)}</span>
                       </div>
-                      <div>
-                        <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2`}>
-                          Unidades no Pacote
-                        </label>
-                        <input
-                          type="number"
-                          placeholder="24"
-                          value={newProduct.packageUnits}
-                          onChange={(e) => setNewProduct({ ...newProduct, packageUnits: e.target.value })}
-                          className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-orange-500 outline-none text-sm sm:text-base ${
-                            darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-200'
-                          }`}
-                        />
-                      </div>
-                      <div>
-                        <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2`}>
-                          Estoque por Pacote
-                        </label>
-                        <input
-                          type="number"
-                          placeholder="8"
-                          value={newProduct.packageQuantity}
-                          onChange={(e) => setNewProduct({ ...newProduct, packageQuantity: e.target.value })}
-                          className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-orange-500 outline-none text-sm sm:text-base ${
-                            darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-200'
-                          }`}
-                        />
-                      </div>
+                    )
+                  })}
+                  <div className="border-t pt-2 mt-2">
+                    <div className="flex justify-between items-center font-semibold">
+                      <span className={`${darkMode ? 'text-white' : 'text-gray-800'}`}>Total de Despesas:</span>
+                      <span className="text-red-600">
+                        {formatCurrency(expenseCategories.reduce((sum, cat) => 
+                          sum + cat.items.reduce((catSum, item) => catSum + item.amount, 0), 0
+                        ))}
+                      </span>
                     </div>
-                  ) : (
-                    <div className="grid grid-cols-1 gap-3 sm:gap-4 mb-4">
-                      <div>
-                        <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2`}>
-                          Quantidade em Estoque
-                        </label>
-                        <input
-                          type="number"
-                          placeholder="50"
-                          value={newProduct.packageQuantity}
-                          onChange={(e) => setNewProduct({ ...newProduct, packageQuantity: e.target.value })}
-                          className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-orange-500 outline-none text-sm sm:text-base ${
-                            darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-200'
-                          }`}
-                        />
-                      </div>
-                    </div>
-                  )}
-                  
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <button
-                      onClick={() => {
-                        setNewProduct({ ...newProduct, category: 'bar' })
-                        addProduct()
-                      }}
-                      className="px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl hover:from-green-600 hover:to-emerald-700 transition-all duration-300"
-                    >
-                      Adicionar Produto
-                    </button>
-                    <button
-                      onClick={() => setShowCustomProductForm(false)}
-                      className="px-4 py-2 bg-gray-500 text-white rounded-xl hover:bg-gray-600 transition-all duration-300"
-                    >
-                      Cancelar
-                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Análise de Produtos Mais Vendidos */}
+              {products.length > 0 && (
+                <div className={`${darkMode ? 'bg-gray-700/50' : 'bg-white/50'} p-6 rounded-xl border border-gray-200/50`}>
+                  <h3 className="text-lg font-semibold text-gray-600 mb-4 flex items-center gap-2">
+                    <Award className="w-5 h-5" />
+                    Top Produtos por Receita
+                  </h3>
+                  <div className="space-y-3">
+                    {products
+                      .sort((a, b) => (b.sold * b.salePrice) - (a.sold * a.salePrice))
+                      .slice(0, 5)
+                      .map((product, index) => (
+                        <div key={product.id} className="flex justify-between items-center">
+                          <div className="flex items-center gap-2">
+                            <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                              index === 0 ? 'bg-yellow-500 text-white' :
+                              index === 1 ? 'bg-gray-400 text-white' :
+                              index === 2 ? 'bg-orange-500 text-white' :
+                              'bg-gray-200 text-gray-600'
+                            }`}>
+                              {index + 1}
+                            </span>
+                            <span className={`${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                              {product.name} ({product.category})
+                            </span>
+                          </div>
+                          <div className="text-right">
+                            <div className="font-semibold text-green-600">
+                              {formatCurrency(product.sold * product.salePrice)}
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              {product.sold} vendidos
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                   </div>
                 </div>
               )}
-
-              {/* Products Table - Mobile Optimized */}
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs sm:text-sm">
-                  <thead>
-                    <tr className={`${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                      <th className={`p-2 sm:p-3 text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Produto</th>
-                      <th className={`p-2 sm:p-3 text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Tipo</th>
-                      <th className={`p-2 sm:p-3 text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Estoque Pacote</th>
-                      <th className={`p-2 sm:p-3 text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Estoque Unidade</th>
-                      <th className={`p-2 sm:p-3 text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Custo</th>
-                      <th className={`p-2 sm:p-3 text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Valor Venda</th>
-                      <th className={`p-2 sm:p-3 text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {products.filter(p => p.category === 'bar').map((product) => (
-                      <tr key={product.id} className={`border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                        <td className={`p-2 sm:p-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>{product.name}</td>
-                        <td className={`p-2 sm:p-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            product.type === 'package' 
-                              ? 'bg-blue-100 text-blue-800' 
-                              : 'bg-green-100 text-green-800'
-                          }`}>
-                            {product.type === 'package' ? 'Pacote' : 'Unitário'}
-                          </span>
-                        </td>
-                        <td className={`p-2 sm:p-3 font-bold ${product.packageQuantity > 0 ? 'text-blue-600' : 'text-gray-400'}`}>
-                          {formatNumber(product.packageQuantity)}
-                        </td>
-                        <td className={`p-2 sm:p-3 font-bold ${(product.quantity - product.sold) > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                          {formatNumber(product.quantity - product.sold)}
-                        </td>
-                        <td className={`p-2 sm:p-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>{formatCurrency(product.purchasePrice)}</td>
-                        <td className={`p-2 sm:p-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>{formatCurrency(product.salePrice)}</td>
-                        <td className="p-2 sm:p-3">
-                          <button
-                            onClick={() => deleteProduct(product.id)}
-                            className="p-1 sm:p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all duration-300 hover:scale-105"
-                            title="Excluir produto"
-                          >
-                            <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Sales Section - Mobile Optimized */}
-            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white/70'} backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-lg`}>
-              <h3 className={`text-lg sm:text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'} mb-4`}>Vendas Realizadas</h3>
-              
-              {/* Resumo Financeiro - Mobile Optimized */}
-              <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
-                <div className={`${darkMode ? 'bg-gray-700' : 'bg-green-50'} p-3 sm:p-4 rounded-xl`}>
-                  <h4 className={`text-xs sm:text-sm font-medium ${darkMode ? 'text-green-400' : 'text-green-600'} mb-2`}>Receita Bruta</h4>
-                  <p className={`text-sm sm:text-xl font-bold ${darkMode ? 'text-green-300' : 'text-green-700'}`}>
-                    {formatCurrency(products.filter(p => p.category === 'bar').reduce((sum, p) => sum + (p.salePrice * p.sold), 0))}
-                  </p>
-                </div>
-                
-                <div className={`${darkMode ? 'bg-gray-700' : 'bg-blue-50'} p-3 sm:p-4 rounded-xl`}>
-                  <h4 className={`text-xs sm:text-sm font-medium ${darkMode ? 'text-blue-400' : 'text-blue-600'} mb-2`}>Receita Líquida</h4>
-                  <p className={`text-sm sm:text-xl font-bold ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>
-                    {formatCurrency(getNetRevenue('bar'))}
-                  </p>
-                </div>
-                
-                <div className={`${darkMode ? 'bg-gray-700' : 'bg-yellow-50'} p-3 sm:p-4 rounded-xl col-span-2 lg:col-span-1`}>
-                  <h4 className={`text-xs sm:text-sm font-medium ${darkMode ? 'text-yellow-400' : 'text-yellow-600'} mb-2`}>Sobras em Reais</h4>
-                  <p className={`text-sm sm:text-xl font-bold ${darkMode ? 'text-yellow-300' : 'text-yellow-700'}`}>
-                    {formatCurrency(getSobraValue('bar'))}
-                  </p>
-                </div>
-              </div>
-
-              {/* Vendas por Pacote - Mobile Optimized */}
-              <div className="mb-8">
-                <h4 className={`text-base sm:text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-800'} mb-4`}>Vendas por Pacote</h4>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs sm:text-sm">
-                    <thead>
-                      <tr className={`${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                        <th className={`p-2 sm:p-3 text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Produto</th>
-                        <th className={`p-2 sm:p-3 text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Preço Unit.</th>
-                        <th className={`p-2 sm:p-3 text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Pacotes Devolvidos</th>
-                        <th className={`p-2 sm:p-3 text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Unidades Sobrou</th>
-                        <th className={`p-2 sm:p-3 text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Receita Bruta</th>
-                        <th className={`p-2 sm:p-3 text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Sobrou em Reais</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {products.filter(p => p.category === 'bar' && p.type === 'package').map((product) => {
-                        const grossRevenue = product.salePrice * product.sold
-                        const sobraValue = product.purchasePrice * (product.remainingUnits || 0)
-                        
-                        return (
-                          <tr key={product.id} className={`border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                            <td className={`p-2 sm:p-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>{product.name}</td>
-                            <td className={`p-2 sm:p-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>{formatCurrency(product.salePrice)}</td>
-                            <td className="p-2 sm:p-3">
-                              <input
-                                type="number"
-                                value={product.returnedPackages || ''}
-                                onChange={(e) => updateProductReturns(product.id, parseInt(e.target.value) || 0, product.remainingUnits || 0)}
-                                min="0"
-                                max={product.packageQuantity}
-                                placeholder="0"
-                                className={`w-16 sm:w-20 p-1 sm:p-2 border rounded-lg focus:ring-2 focus:ring-orange-500 outline-none text-xs sm:text-sm ${
-                                  darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-200 placeholder-gray-400'
-                                }`}
-                              />
-                            </td>
-                            <td className="p-2 sm:p-3">
-                              <input
-                                type="number"
-                                value={product.remainingUnits || ''}
-                                onChange={(e) => updateProductReturns(product.id, product.returnedPackages || 0, parseInt(e.target.value) || 0)}
-                                min="0"
-                                placeholder="0"
-                                className={`w-16 sm:w-20 p-1 sm:p-2 border rounded-lg focus:ring-2 focus:ring-orange-500 outline-none text-xs sm:text-sm ${
-                                  darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-200 placeholder-gray-400'
-                                }`}
-                              />
-                            </td>
-                            <td className={`p-2 sm:p-3 font-bold text-green-600 text-xs sm:text-sm`}>{formatCurrency(grossRevenue)}</td>
-                            <td className={`p-2 sm:p-3 font-bold text-yellow-600 text-xs sm:text-sm`}>{formatCurrency(sobraValue)}</td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Vendas por Unidade - Mobile Optimized */}
-              <div className="mb-6">
-                <h4 className={`text-base sm:text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-800'} mb-4`}>Vendas por Unidade</h4>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs sm:text-sm">
-                    <thead>
-                      <tr className={`${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                        <th className={`p-2 sm:p-3 text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Produto</th>
-                        <th className={`p-2 sm:p-3 text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Preço Unit.</th>
-                        <th className={`p-2 sm:p-3 text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Unidades Devolvidas</th>
-                        <th className={`p-2 sm:p-3 text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Receita Bruta</th>
-                        <th className={`p-2 sm:p-3 text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Sobrou em Reais</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {products.filter(p => p.category === 'bar' && p.type === 'unit').map((product) => {
-                        const grossRevenue = product.salePrice * product.sold
-                        const sobraValue = product.purchasePrice * (product.remainingUnits || 0)
-                        
-                        return (
-                          <tr key={product.id} className={`border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                            <td className={`p-2 sm:p-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>{product.name}</td>
-                            <td className={`p-2 sm:p-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>{formatCurrency(product.salePrice)}</td>
-                            <td className="p-2 sm:p-3">
-                              <input
-                                type="number"
-                                value={product.returnedPackages || ''}
-                                onChange={(e) => updateProductReturns(product.id, parseInt(e.target.value) || 0, product.remainingUnits || 0)}
-                                min="0"
-                                max={product.packageQuantity}
-                                placeholder="0"
-                                className={`w-16 sm:w-20 p-1 sm:p-2 border rounded-lg focus:ring-2 focus:ring-orange-500 outline-none text-xs sm:text-sm ${
-                                  darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-200 placeholder-gray-400'
-                                }`}
-                              />
-                            </td>
-                            <td className={`p-2 sm:p-3 font-bold text-green-600 text-xs sm:text-sm`}>{formatCurrency(grossRevenue)}</td>
-                            <td className={`p-2 sm:p-3 font-bold text-yellow-600 text-xs sm:text-sm`}>{formatCurrency(sobraValue)}</td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <div className="mt-4 text-right">
-                <span className={`text-sm sm:text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-                  Receita Total do Bar: <span className="text-green-600">{formatCurrency(getBarRevenue())}</span>
-                </span>
-              </div>
-            </div>
-
-            {/* Bar Summary Card - Mobile Optimized */}
-            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white/70'} backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-lg`}>
-              <h3 className={`text-lg sm:text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'} mb-4`}>Resumo do Bar</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
-                <div className="text-center">
-                  <div className="text-2xl sm:text-3xl font-bold text-orange-600 mb-2">
-                    {formatCurrency(getBarProfit())}
-                  </div>
-                  <div className={`text-sm sm:text-base ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Lucro do Bar</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl sm:text-3xl font-bold text-blue-600 mb-2">
-                    {getBarMargin().toFixed(1)}%
-                  </div>
-                  <div className={`text-sm sm:text-base ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Margem de Lucro</div>
-                </div>
-                <div className="text-center">
-                  <div className={`w-16 h-16 sm:w-24 sm:h-24 mx-auto rounded-full flex items-center justify-center text-xl sm:text-2xl font-bold ${
-                    getBarProfit() >= 0 ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
-                  }`}>
-                    {getBarProfit() >= 0 ? '📈' : '📉'}
-                  </div>
-                  <div className={`mt-2 text-sm sm:text-base ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Performance</div>
-                </div>
-              </div>
             </div>
           </div>
         )}
 
-        {/* Loja Tab - Mobile Optimized */}
-        {activeTab === 'loja' && (
-          <div className="space-y-4 sm:space-y-8">
-            {/* Similar structure to Bar but for Loja - Mobile Optimized */}
-            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white/70'} backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-lg`}>
-              <h3 className={`text-lg sm:text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'} mb-3 sm:mb-4 flex items-center gap-2`}>
-                <ShoppingCart className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" />
-                Total de Investimento na Loja
-              </h3>
-              <div className="text-2xl sm:text-3xl font-bold text-purple-600">
-                {formatCurrency(getLojaInvestment())}
+        {/* Modal de Adicionar Produto - CORRIGIDO */}
+        {showCustomProductForm && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className={`${darkMode ? 'bg-gray-800/90' : 'bg-white/90'} backdrop-blur-xl rounded-2xl p-6 w-full max-w-md shadow-2xl border border-white/20`}>
+              <div className="flex items-center justify-between mb-6">
+                <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                  Adicionar Produto
+                </h3>
+                <button
+                  onClick={() => setShowCustomProductForm(false)}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors duration-200"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
-              <div className="mt-2 text-base sm:text-lg text-green-600 font-semibold">
-                Receita Bruta Total: {formatCurrency(products.filter(p => p.category === 'loja').reduce((sum, p) => sum + (p.salePrice * p.sold), 0))}
-              </div>
-            </div>
-
-            {/* Products Management for Loja - Mobile Optimized */}
-            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white/70'} backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-lg`}>
-              <h3 className={`text-lg sm:text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'} mb-4`}>Produtos da Loja</h3>
               
-              {/* Add Product Form - Mobile Optimized */}
-              <div className="grid grid-cols-1 gap-3 sm:gap-4 mb-6">
-                <input
-                  type="text"
-                  placeholder="Nome do produto"
-                  value={newProduct.name}
-                  onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })}
-                  className={`p-3 border rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm sm:text-base ${
-                    darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-200'
-                  }`}
-                />
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-4">
+                <div>
+                  <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2`}>
+                    Nome do Produto
+                  </label>
                   <input
-                    type="number"
-                    placeholder="Valor do produto (custo)"
-                    value={newProduct.packagePrice}
-                    onChange={(e) => setNewProduct({ ...newProduct, packagePrice: e.target.value })}
-                    className={`p-3 border rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm sm:text-base ${
-                      darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-200'
+                    type="text"
+                    value={newProduct.name}
+                    onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })}
+                    className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-purple-500 outline-none ${
+                      darkMode ? 'bg-gray-700/50 border-gray-600 text-white' : 'bg-white/50 border-gray-200'
                     }`}
-                  />
-                  <input
-                    type="number"
-                    placeholder="Valor da venda"
-                    value={newProduct.salePrice}
-                    onChange={(e) => setNewProduct({ ...newProduct, salePrice: e.target.value })}
-                    className={`p-3 border rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm sm:text-base ${
-                      darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-200'
-                    }`}
+                    placeholder="Ex: Cerveja Heineken"
                   />
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <input
-                    type="number"
-                    placeholder="Estoque (unidades)"
-                    value={newProduct.packageQuantity}
-                    onChange={(e) => setNewProduct({ ...newProduct, packageQuantity: e.target.value })}
-                    className={`p-3 border rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm sm:text-base ${
-                      darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-200'
+                
+                <div>
+                  <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2`}>
+                    Categoria
+                  </label>
+                  <select
+                    value={newProduct.category}
+                    onChange={(e) => setNewProduct({ ...newProduct, category: e.target.value as 'bar' | 'loja' })}
+                    className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-purple-500 outline-none ${
+                      darkMode ? 'bg-gray-700/50 border-gray-600 text-white' : 'bg-white/50 border-gray-200'
                     }`}
-                  />
-                  <button
-                    onClick={() => {
-                      setNewProduct({ 
-                        ...newProduct, 
-                        category: 'loja', 
-                        type: 'unit',
-                        packageUnits: '1',
-                        purchasePrice: newProduct.packagePrice // Use packagePrice as purchasePrice for loja
-                      })
-                      addProduct()
-                    }}
-                    className="p-3 bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-xl hover:from-purple-600 hover:to-pink-700 transition-all duration-300 hover:scale-105 shadow-lg flex items-center justify-center gap-2"
                   >
-                    <Plus className="w-4 h-4" />
-                    Adicionar
-                  </button>
+                    <option value="bar">Bar</option>
+                    <option value="loja">Loja</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2`}>
+                    Tipo de Produto
+                  </label>
+                  <select
+                    value={newProduct.type}
+                    onChange={(e) => setNewProduct({ ...newProduct, type: e.target.value as 'package' | 'unit' })}
+                    className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-purple-500 outline-none ${
+                      darkMode ? 'bg-gray-700/50 border-gray-600 text-white' : 'bg-white/50 border-gray-200'
+                    }`}
+                  >
+                    <option value="package">Pacote (ex: caixa com 24 unidades)</option>
+                    <option value="unit">Unidade (ex: camiseta individual)</option>
+                  </select>
+                </div>
+
+                {newProduct.type === 'package' && (
+                  <>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2`}>
+                          Preço do Pacote (R$)
+                        </label>
+                        <input
+                          type="number"
+                          value={newProduct.packagePrice}
+                          onChange={(e) => setNewProduct({ ...newProduct, packagePrice: e.target.value })}
+                          className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-purple-500 outline-none ${
+                            darkMode ? 'bg-gray-700/50 border-gray-600 text-white' : 'bg-white/50 border-gray-200'
+                          }`}
+                          placeholder="Ex: 60"
+                        />
+                      </div>
+                      <div>
+                        <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2`}>
+                          Unidades por Pacote
+                        </label>
+                        <input
+                          type="number"
+                          value={newProduct.packageUnits}
+                          onChange={(e) => setNewProduct({ ...newProduct, packageUnits: e.target.value })}
+                          className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-purple-500 outline-none ${
+                            darkMode ? 'bg-gray-700/50 border-gray-600 text-white' : 'bg-white/50 border-gray-200'
+                          }`}
+                          placeholder="Ex: 24"
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2`}>
+                      Preço de Venda (R$)
+                    </label>
+                    <input
+                      type="number"
+                      value={newProduct.salePrice}
+                      onChange={(e) => setNewProduct({ ...newProduct, salePrice: e.target.value })}
+                      className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-purple-500 outline-none ${
+                        darkMode ? 'bg-gray-700/50 border-gray-600 text-white' : 'bg-white/50 border-gray-200'
+                      }`}
+                      placeholder="Ex: 5"
+                    />
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2`}>
+                      {newProduct.type === 'package' ? 'Quantidade de Pacotes' : 'Quantidade'}
+                    </label>
+                    <input
+                      type="number"
+                      value={newProduct.packageQuantity}
+                      onChange={(e) => setNewProduct({ ...newProduct, packageQuantity: e.target.value })}
+                      className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-purple-500 outline-none ${
+                        darkMode ? 'bg-gray-700/50 border-gray-600 text-white' : 'bg-white/50 border-gray-200'
+                      }`}
+                      placeholder="Ex: 10"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2`}>
+                    Custo Unitário (R$) - Opcional
+                  </label>
+                  <input
+                    type="number"
+                    value={newProduct.purchasePrice}
+                    onChange={(e) => setNewProduct({ ...newProduct, purchasePrice: e.target.value })}
+                    className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-purple-500 outline-none ${
+                      darkMode ? 'bg-gray-700/50 border-gray-600 text-white' : 'bg-white/50 border-gray-200'
+                    }`}
+                    placeholder="Ex: 2.5"
+                  />
                 </div>
               </div>
-
-              {/* Products Table - Mobile Optimized */}
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs sm:text-sm">
-                  <thead>
-                    <tr className={`${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                      <th className={`p-2 sm:p-3 text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Produto</th>
-                      <th className={`p-2 sm:p-3 text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Valor do Produto</th>
-                      <th className={`p-2 sm:p-3 text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Valor da Venda</th>
-                      <th className={`p-2 sm:p-3 text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Estoque (unidades)</th>
-                      <th className={`p-2 sm:p-3 text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {products.filter(p => p.category === 'loja').map((product) => (
-                      <tr key={product.id} className={`border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                        <td className={`p-2 sm:p-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>{product.name}</td>
-                        <td className={`p-2 sm:p-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>{formatCurrency(product.packagePrice)}</td>
-                        <td className={`p-2 sm:p-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>{formatCurrency(product.salePrice)}</td>
-                        <td className={`p-2 sm:p-3 font-bold ${product.packageQuantity > 0 ? 'text-blue-600' : 'text-gray-400'}`}>
-                          {formatNumber(product.packageQuantity)}
-                        </td>
-                        <td className="p-2 sm:p-3">
-                          <button
-                            onClick={() => deleteProduct(product.id)}
-                            className="p-1 sm:p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all duration-300 hover:scale-105"
-                            title="Excluir produto"
-                          >
-                            <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Sales Section for Loja - Mobile Optimized */}
-            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white/70'} backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-lg`}>
-              <h3 className={`text-lg sm:text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'} mb-4`}>Vendas Realizadas</h3>
               
-              {/* Resumo Financeiro - Mobile Optimized */}
-              <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-6">
-                <div className={`${darkMode ? 'bg-gray-700' : 'bg-green-50'} p-3 sm:p-4 rounded-xl`}>
-                  <h4 className={`text-xs sm:text-sm font-medium ${darkMode ? 'text-green-400' : 'text-green-600'} mb-2`}>Receita Bruta</h4>
-                  <p className={`text-sm sm:text-xl font-bold ${darkMode ? 'text-green-300' : 'text-green-700'}`}>
-                    {formatCurrency(products.filter(p => p.category === 'loja').reduce((sum, p) => sum + (p.salePrice * p.sold), 0))}
-                  </p>
-                </div>
-                
-                <div className={`${darkMode ? 'bg-gray-700' : 'bg-blue-50'} p-3 sm:p-4 rounded-xl`}>
-                  <h4 className={`text-xs sm:text-sm font-medium ${darkMode ? 'text-blue-400' : 'text-blue-600'} mb-2`}>Receita Líquida</h4>
-                  <p className={`text-sm sm:text-xl font-bold ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>
-                    {formatCurrency(getNetRevenue('loja'))}
-                  </p>
-                </div>
-                
-                <div className={`${darkMode ? 'bg-gray-700' : 'bg-yellow-50'} p-3 sm:p-4 rounded-xl col-span-2 lg:col-span-1`}>
-                  <h4 className={`text-xs sm:text-sm font-medium ${darkMode ? 'text-yellow-400' : 'text-yellow-600'} mb-2`}>Sobras em Reais</h4>
-                  <p className={`text-sm sm:text-xl font-bold ${darkMode ? 'text-yellow-300' : 'text-yellow-700'}`}>
-                    {formatCurrency(getSobraValue('loja'))}
-                  </p>
-                </div>
-              </div>
-
-              {/* Sales Table - Mobile Optimized */}
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs sm:text-sm">
-                  <thead>
-                    <tr className={`${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                      <th className={`p-2 sm:p-3 text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Produto</th>
-                      <th className={`p-2 sm:p-3 text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Preço Unit.</th>
-                      <th className={`p-2 sm:p-3 text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Quantidade Devolvida</th>
-                      <th className={`p-2 sm:p-3 text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Faturamento Bruto</th>
-                      <th className={`p-2 sm:p-3 text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Valor em Produtos</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {products.filter(p => p.category === 'loja').map((product) => {
-                      const grossRevenue = product.salePrice * product.sold
-                      const productValue = product.packagePrice * product.sold
-                      
-                      return (
-                        <tr key={product.id} className={`border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                          <td className={`p-2 sm:p-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>{product.name}</td>
-                          <td className={`p-2 sm:p-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>{formatCurrency(product.salePrice)}</td>
-                          <td className="p-2 sm:p-3">
-                            <input
-                              type="number"
-                              value={product.returnedPackages || ''}
-                              onChange={(e) => updateProductReturns(product.id, parseInt(e.target.value) || 0, product.remainingUnits || 0)}
-                              min="0"
-                              max={product.packageQuantity}
-                              placeholder="0"
-                              className={`w-16 sm:w-20 p-1 sm:p-2 border rounded-lg focus:ring-2 focus:ring-purple-500 outline-none text-xs sm:text-sm ${
-                                darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-200 placeholder-gray-400'
-                              }`}
-                            />
-                          </td>
-                          <td className={`p-2 sm:p-3 font-bold text-green-600 text-xs sm:text-sm`}>{formatCurrency(grossRevenue)}</td>
-                          <td className={`p-2 sm:p-3 font-bold text-blue-600 text-xs sm:text-sm`}>{formatCurrency(productValue)}</td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="mt-4 text-right">
-                <span className={`text-sm sm:text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-                  Total de Receitas da Loja: <span className="text-green-600">{formatCurrency(getLojaRevenue())}</span>
-                </span>
-              </div>
-            </div>
-
-            {/* Loja Summary Card - Mobile Optimized */}
-            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white/70'} backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-lg`}>
-              <h3 className={`text-lg sm:text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'} mb-4`}>Resumo da Loja</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
-                <div className="text-center">
-                  <div className="text-2xl sm:text-3xl font-bold text-purple-600 mb-2">
-                    {formatCurrency(getLojaProfit())}
-                  </div>
-                  <div className={`text-sm sm:text-base ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Lucro da Loja</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl sm:text-3xl font-bold text-blue-600 mb-2">
-                    {getLojaMargin().toFixed(1)}%
-                  </div>
-                  <div className={`text-sm sm:text-base ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Margem de Lucro</div>
-                </div>
-                <div className="text-center">
-                  <div className={`w-16 h-16 sm:w-24 sm:h-24 mx-auto rounded-full flex items-center justify-center text-xl sm:text-2xl font-bold ${
-                    getLojaProfit() >= 0 ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
-                  }`}>
-                    {getLojaProfit() >= 0 ? '🛍️' : '📉'}
-                  </div>
-                  <div className={`mt-2 text-sm sm:text-base ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Performance</div>
-                </div>
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={() => setShowCustomProductForm(false)}
+                  className="flex-1 px-4 py-3 bg-gray-500 text-white rounded-xl hover:bg-gray-600 transition-colors duration-200"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={addProduct}
+                  className="flex-1 px-4 py-3 bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-xl hover:from-purple-600 hover:to-pink-700 transition-all duration-300"
+                >
+                  Adicionar
+                </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* Relatório Tab - Mobile Optimized */}
-        {activeTab === 'relatorio' && (
-          <div className="space-y-4 sm:space-y-8">
-            {/* Receitas Totais Card - Mobile Optimized */}
-            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white/70'} backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-lg`}>
-              <h3 className={`text-lg sm:text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'} mb-3 sm:mb-4 flex items-center gap-2`}>
-                <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
-                Receitas Totais
-              </h3>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className={`text-sm sm:text-base ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Bar:</span>
-                  <span className="font-bold text-green-600 text-sm sm:text-base">{formatCurrency(getBarRevenue())}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className={`text-sm sm:text-base ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Loja:</span>
-                  <span className="font-bold text-green-600 text-sm sm:text-base">{formatCurrency(getLojaRevenue())}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className={`text-sm sm:text-base ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Ingressos:</span>
-                  <span className="font-bold text-green-600 text-sm sm:text-base">{formatCurrency(ticketInfo.currentTicketPrice * ticketInfo.ticketsSold)}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className={`text-sm sm:text-base ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Outras Receitas:</span>
-                  <span className="font-bold text-green-600 text-sm sm:text-base">{formatCurrency(revenues.reduce((sum, rev) => sum + rev.amount, 0))}</span>
-                </div>
-                <hr className={`${darkMode ? 'border-gray-700' : 'border-gray-200'}`} />
-                <div className="flex justify-between items-center text-base sm:text-lg">
-                  <span className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Total Geral:</span>
-                  <span className="font-bold text-green-600 text-lg sm:text-xl">{formatCurrency(getTotalRevenue())}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Gastos Totais Card - Mobile Optimized */}
-            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white/70'} backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-lg`}>
-              <h3 className={`text-lg sm:text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'} mb-3 sm:mb-4 flex items-center gap-2`}>
-                <TrendingDown className="w-5 h-5 sm:w-6 sm:h-6 text-red-600" />
-                Gastos Totais
-              </h3>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className={`text-sm sm:text-base ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Investimento Bar:</span>
-                  <span className="font-bold text-red-600 text-sm sm:text-base">{formatCurrency(getBarInvestment())}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className={`text-sm sm:text-base ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Investimento Loja:</span>
-                  <span className="font-bold text-red-600 text-sm sm:text-base">{formatCurrency(getLojaInvestment())}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className={`text-sm sm:text-base ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Custo do Evento:</span>
-                  <span className="font-bold text-red-600 text-sm sm:text-base">{formatCurrency(ticketInfo.eventTotalCost)}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className={`text-sm sm:text-base ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Outras Despesas:</span>
-                  <span className="font-bold text-red-600 text-sm sm:text-base">{formatCurrency(expenses.reduce((sum, exp) => sum + exp.amount, 0) + expenseCategories.reduce((sum, category) => sum + category.items.reduce((catSum, item) => catSum + item.amount, 0), 0))}</span>
-                </div>
-                <hr className={`${darkMode ? 'border-gray-700' : 'border-gray-200'}`} />
-                <div className="flex justify-between items-center text-base sm:text-lg">
-                  <span className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Total Geral:</span>
-                  <span className="font-bold text-red-600 text-lg sm:text-xl">{formatCurrency(getTotalExpenses())}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Resultado Final Card - Mobile Optimized */}
-            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white/70'} backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-lg`}>
-              <h3 className={`text-lg sm:text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'} mb-3 sm:mb-4 flex items-center gap-2`}>
-                <Target className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
-                Resultado Final
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
-                <div className="text-center">
-                  <div className={`text-2xl sm:text-4xl font-bold mb-2 ${getNetProfit() >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {formatCurrency(getNetProfit())}
-                  </div>
-                  <div className={`text-sm sm:text-base ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                    {getNetProfit() >= 0 ? 'Lucro' : 'Prejuízo'}
-                  </div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl sm:text-4xl font-bold text-blue-600 mb-2">
-                    {getTotalRevenue() > 0 ? ((getNetProfit() / getTotalRevenue()) * 100).toFixed(1) : 0}%
-                  </div>
-                  <div className={`text-sm sm:text-base ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Margem de Lucro</div>
-                </div>
-                <div className="text-center">
-                  <div className={`w-20 h-20 sm:w-32 sm:h-32 mx-auto rounded-full flex items-center justify-center text-2xl sm:text-4xl ${
-                    getNetProfit() >= 0 ? 'bg-green-100' : 'bg-red-100'
-                  }`}>
-                    {getNetProfit() >= 0 ? '🎉' : '😔'}
-                  </div>
-                  <div className={`mt-2 text-sm sm:text-base ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Status Geral</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Action Buttons - Mobile Optimized */}
-            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
-              <button
-                onClick={exportToPDF}
-                disabled={isExporting}
-                className="px-4 sm:px-6 py-3 bg-gradient-to-r from-red-500 to-pink-600 text-white rounded-xl hover:from-red-600 hover:to-pink-700 transition-all duration-300 hover:scale-105 shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {isExporting ? <RefreshCw className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" /> : <Download className="w-4 h-4 sm:w-5 sm:h-5" />}
-                Exportar PDF
-              </button>
-              
-              <button
-                onClick={() => {
-                  if (navigator.share) {
-                    navigator.share({
-                      title: 'EventControl Pro - Relatório',
-                      text: `Lucro: ${formatCurrency(getNetProfit())} | Margem: ${getTotalRevenue() > 0 ? ((getNetProfit() / getTotalRevenue()) * 100).toFixed(1) : 0}%`,
-                      url: window.location.href
-                    })
-                  } else {
-                    addNotification('info', 'Compartilhar', 'Funcionalidade de compartilhamento não disponível neste navegador')
-                  }
-                }}
-                className="px-4 sm:px-6 py-3 bg-gradient-to-r from-blue-500 to-cyan-600 text-white rounded-xl hover:from-blue-600 hover:to-cyan-700 transition-all duration-300 hover:scale-105 shadow-lg flex items-center justify-center gap-2"
-              >
-                <Share2 className="w-4 h-4 sm:w-5 sm:h-5" />
-                Compartilhar
-              </button>
-              
-              <button
-                onClick={() => {
-                  const eventData = {
-                    name: `Evento ${new Date().toLocaleDateString('pt-BR')}`,
-                    summary: {
-                      revenue: getTotalRevenue(),
-                      expenses: getTotalExpenses(),
-                      profit: getNetProfit()
-                    },
-                    products: products.length,
-                    sales: sales.length
-                  }
-                  localStorage.setItem(`saved-event-${Date.now()}`, JSON.stringify(eventData))
-                  addNotification('success', 'Evento Salvo', 'Evento foi salvo com sucesso!')
-                }}
-                className="px-4 sm:px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl hover:from-green-600 hover:to-emerald-700 transition-all duration-300 hover:scale-105 shadow-lg flex items-center justify-center gap-2"
-              >
-                <Save className="w-4 h-4 sm:w-5 sm:h-5" />
-                Salvar Evento
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Floating Action Button - Mobile Optimized */}
+        {/* Enhanced Floating Action Button */}
         <div className="fixed bottom-4 sm:bottom-6 right-4 sm:right-6 z-50">
           <div className="relative">
             {showFloatingMenu && (
               <div className="absolute bottom-12 sm:bottom-16 right-0 space-y-2">
-                <button
-                  onClick={() => {
-                    setActiveTab('bar')
-                    setShowFloatingMenu(false)
-                  }}
-                  className="block p-2 sm:p-3 bg-orange-500 text-white rounded-full shadow-lg hover:bg-orange-600 transition-all duration-300"
-                  title="Adicionar ao Bar"
-                >
-                  <Coffee className="w-4 h-4 sm:w-5 sm:h-5" />
-                </button>
-                <button
-                  onClick={() => {
-                    setActiveTab('loja')
-                    setShowFloatingMenu(false)
-                  }}
-                  className="block p-2 sm:p-3 bg-purple-500 text-white rounded-full shadow-lg hover:bg-purple-600 transition-all duration-300"
-                  title="Adicionar à Loja"
-                >
-                  <ShoppingCart className="w-4 h-4 sm:w-5 sm:h-5" />
-                </button>
-                <button
-                  onClick={() => {
-                    setActiveTab('ingressos')
-                    setShowFloatingMenu(false)
-                  }}
-                  className="block p-2 sm:p-3 bg-indigo-500 text-white rounded-full shadow-lg hover:bg-indigo-600 transition-all duration-300"
-                  title="Gerenciar Ingressos"
-                >
-                  <Ticket className="w-4 h-4 sm:w-5 sm:h-5" />
-                </button>
-                <button
-                  onClick={() => {
-                    // Simulate camera functionality
-                    addNotification('info', 'Câmera', 'Funcionalidade de câmera será implementada em breve!')
-                    setShowFloatingMenu(false)
-                  }}
-                  className="block p-2 sm:p-3 bg-blue-500 text-white rounded-full shadow-lg hover:bg-blue-600 transition-all duration-300"
-                  title="Fotografar Nota Fiscal"
-                >
-                  <Camera className="w-4 h-4 sm:w-5 sm:h-5" />
-                </button>
+                {[
+                  { tab: 'bar', icon: Coffee, color: 'from-orange-500 to-red-600', label: 'Adicionar ao Bar' },
+                  { tab: 'loja', icon: ShoppingCart, color: 'from-purple-500 to-pink-600', label: 'Adicionar à Loja' },
+                  { tab: 'ingressos', icon: Ticket, color: 'from-indigo-500 to-purple-600', label: 'Gerenciar Ingressos' },
+                  { tab: 'simulador', icon: LineChart, color: 'from-cyan-500 to-blue-600', label: 'Simulador de Eventos' },
+                  { action: 'camera', icon: Camera, color: 'from-blue-500 to-indigo-600', label: 'Fotografar Nota Fiscal' }
+                ].map((item, index) => (
+                  <button
+                    key={index}
+                    onClick={() => {
+                      if (item.action === 'camera') {
+                        addNotification('info', 'Câmera', 'Funcionalidade de câmera será implementada em breve!')
+                      } else {
+                        setActiveTab(item.tab as any)
+                      }
+                      setShowFloatingMenu(false)
+                    }}
+                    className={`block p-2 sm:p-3 bg-gradient-to-r ${item.color} text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-110 animate-fade-in-up`}
+                    title={item.label}
+                    style={{ animationDelay: `${index * 100}ms` }}
+                  >
+                    <item.icon className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </button>
+                ))}
               </div>
             )}
             
             <button
               onClick={() => setShowFloatingMenu(!showFloatingMenu)}
-              className={`p-3 sm:p-4 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-full shadow-lg hover:from-pink-600 hover:to-purple-700 transition-all duration-300 hover:scale-110 ${
-                showFloatingMenu ? 'rotate-45' : ''
+              className={`p-3 sm:p-4 bg-gradient-to-r from-pink-500 via-purple-500 to-pink-600 text-white rounded-full shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-110 ${
+                showFloatingMenu ? 'rotate-45' : 'hover:rotate-12'
               }`}
             >
               <Plus className="w-5 h-5 sm:w-6 sm:h-6" />
@@ -2278,21 +2867,24 @@ export default function EventControlPro() {
           </div>
         </div>
 
-        {/* Calculator Modal - Mobile Optimized */}
+        {/* Enhanced Calculator Modal */}
         {showCalculator && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl p-4 sm:p-6 w-full max-w-sm`}>
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className={`${darkMode ? 'bg-gray-800/90' : 'bg-white/90'} backdrop-blur-xl rounded-2xl p-4 sm:p-6 w-full max-w-sm shadow-2xl border border-white/20`}>
               <div className="flex items-center justify-between mb-4">
-                <h3 className={`text-lg sm:text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Calculadora</h3>
+                <h3 className={`text-lg sm:text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'} flex items-center gap-2`}>
+                  <Calculator className="w-5 h-5 text-emerald-500" />
+                  Calculadora
+                </h3>
                 <button
                   onClick={() => setShowCalculator(false)}
-                  className="p-2 hover:bg-gray-100 rounded-lg"
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors duration-200"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
               
-              <div className={`${darkMode ? 'bg-gray-700' : 'bg-gray-100'} p-3 sm:p-4 rounded-xl mb-4`}>
+              <div className={`${darkMode ? 'bg-gray-700/50' : 'bg-gray-100/50'} p-3 sm:p-4 rounded-xl mb-4 backdrop-blur-sm`}>
                 <div className={`text-right text-xl sm:text-2xl font-mono ${darkMode ? 'text-white' : 'text-gray-800'}`}>
                   {calculatorValue || '0'}
                 </div>
@@ -2303,14 +2895,14 @@ export default function EventControlPro() {
                   <button
                     key={btn}
                     onClick={() => handleCalculatorInput(btn)}
-                    className={`p-2 sm:p-3 rounded-lg font-medium transition-all duration-200 text-sm sm:text-base ${
+                    className={`p-2 sm:p-3 rounded-lg font-medium transition-all duration-200 text-sm sm:text-base hover:scale-105 ${
                       btn === '=' 
-                        ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white col-span-2' 
+                        ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white col-span-2 shadow-lg' 
                         : btn === '0'
-                        ? 'col-span-2 bg-gray-200 hover:bg-gray-300 text-gray-800'
+                        ? 'col-span-2 bg-gray-200 hover:bg-gray-300 text-gray-800 shadow-md'
                         : darkMode
-                        ? 'bg-gray-700 hover:bg-gray-600 text-white'
-                        : 'bg-gray-200 hover:bg-gray-300 text-gray-800'
+                        ? 'bg-gray-700/50 hover:bg-gray-600/50 text-white shadow-md'
+                        : 'bg-gray-200/50 hover:bg-gray-300/50 text-gray-800 shadow-md'
                     }`}
                   >
                     {btn}
@@ -2321,14 +2913,20 @@ export default function EventControlPro() {
           </div>
         )}
 
-        {/* Notifications Dropdown - Mobile Optimized */}
+        {/* Enhanced Notifications Dropdown */}
         {showNotifications && (
-          <div className="fixed top-16 sm:top-20 right-2 sm:right-4 w-80 max-w-[calc(100vw-1rem)] bg-white rounded-2xl shadow-2xl border border-gray-200 z-50 max-h-96 overflow-y-auto">
-            <div className="p-3 sm:p-4 border-b border-gray-200">
-              <h3 className="font-semibold text-gray-800 text-sm sm:text-base">Notificações</h3>
+          <div className="fixed top-16 sm:top-20 right-2 sm:right-4 w-80 max-w-[calc(100vw-1rem)] bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 z-50 max-h-96 overflow-y-auto">
+            <div className="p-3 sm:p-4 border-b border-gray-200/50">
+              <h3 className="font-semibold text-gray-800 text-sm sm:text-base flex items-center gap-2">
+                <Bell className="w-4 h-4 text-purple-500" />
+                Notificações
+              </h3>
             </div>
             {notifications.length === 0 ? (
               <div className="p-4 text-center text-gray-500 text-sm">
+                <div className="w-12 h-12 mx-auto mb-2 bg-gray-100 rounded-full flex items-center justify-center">
+                  <Bell className="w-6 h-6 text-gray-400" />
+                </div>
                 Nenhuma notificação
               </div>
             ) : (
@@ -2336,7 +2934,7 @@ export default function EventControlPro() {
                 {notifications.slice(0, 10).map((notification) => (
                   <div
                     key={notification.id}
-                    className={`p-3 sm:p-4 border-b border-gray-100 hover:bg-gray-50 cursor-pointer ${!notification.read ? 'bg-blue-50' : ''}`}
+                    className={`p-3 sm:p-4 border-b border-gray-100/50 hover:bg-gray-50/50 cursor-pointer transition-all duration-200 ${!notification.read ? 'bg-blue-50/50' : ''}`}
                     onClick={() => {
                       setNotifications(notifications.map(n => 
                         n.id === notification.id ? { ...n, read: true } : n
@@ -2369,6 +2967,34 @@ export default function EventControlPro() {
           </div>
         )}
       </div>
+
+      {/* Add custom CSS for animations */}
+      <style jsx>{`
+        @keyframes gradient {
+          0%, 100% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+        }
+        
+        @keyframes fade-in-up {
+          from {
+            opacity: 0;
+            transform: translateY(10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        
+        .animate-gradient {
+          background-size: 200% 200%;
+          animation: gradient 3s ease infinite;
+        }
+        
+        .animate-fade-in-up {
+          animation: fade-in-up 0.3s ease-out forwards;
+        }
+      `}</style>
     </div>
   )
 }
